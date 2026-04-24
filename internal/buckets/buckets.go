@@ -13,6 +13,8 @@ var terminalVars = map[string]bool{
 	"TERM_PROGRAM_VERSION":    true,
 	"TERM_SESSION_ID":         true,
 	"COLORTERM":               true,
+	"COLORFGBG":               true,
+	"TERMINFO_DIRS":           true,
 	"LC_TERMINAL":             true,
 	"LC_TERMINAL_VERSION":     true,
 	"__CFBundleIdentifier":    true,
@@ -38,12 +40,46 @@ var systemVars = map[string]bool{
 	"_":            true,
 }
 
+var shellManagedVars = map[string]bool{
+	"SHLVL":         true,
+	"PAGER":         true,
+	"LESS":          true,
+	"LESSCHARSET":   true,
+	"LINES":         true,
+	"COLUMNS":       true,
+	"OPTIND":        true,
+	"PPID":          true,
+	"HOSTNAME":      true,
+	"HOSTTYPE":      true,
+	"MACHTYPE":      true,
+	"OSTYPE":        true,
+	"CPUTYPE":       true,
+	"VENDOR":        true,
+	"EUID":          true,
+	"UID":           true,
+	"GROUPS":        true,
+	"HISTFILE":      true,
+	"HISTSIZE":      true,
+	"HISTFILESIZE":  true,
+	"HISTCONTROL":   true,
+	"SAVEHIST":      true,
+	"TERM_FEATURES": true,
+	"ZSH":           true,
+	"ZSH_NAME":      true,
+	"ZSH_VERSION":   true,
+	"BASH":          true,
+	"BASH_VERSION":  true,
+}
+
 func Classify(name, value string) (model.Origin, string) {
 	if strings.HasPrefix(name, "ITERM_") || strings.HasPrefix(name, "ITERM2_") {
 		return model.OriginTerminal, "iTerm"
 	}
 	if strings.HasPrefix(name, "XPC_") {
 		return model.OriginSystem, "launchd xpc"
+	}
+	if strings.HasPrefix(name, "CLAUDE_CODE_") || name == "CLAUDECODE" {
+		return model.OriginSystem, "parent-injected (Claude Code)"
 	}
 	if terminalVars[name] {
 		return model.OriginTerminal, ""
@@ -53,6 +89,12 @@ func Classify(name, value string) (model.Origin, string) {
 	}
 	if systemVars[name] {
 		return model.OriginSystem, ""
+	}
+	if strings.HasPrefix(name, "LC_") || name == "LANG" {
+		return model.OriginSystem, "locale"
+	}
+	if shellManagedVars[name] {
+		return model.OriginSystem, "shell-managed"
 	}
 	if out, err := exec.Command("launchctl", "getenv", name).Output(); err == nil {
 		if strings.TrimRight(string(out), "\n") == value {
