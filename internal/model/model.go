@@ -27,3 +27,20 @@ type TraceEntry struct {
 	Name string
 	Raw  string
 }
+
+func IsDeferredListVar(name string) bool {
+	switch name {
+	case "PATH", "MANPATH", "INFOPATH", "FPATH", "CDPATH",
+		"DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH", "DYLD_FRAMEWORK_PATH":
+		return true
+	}
+	return false
+}
+
+func IsDirenvVar(name string) bool {
+	switch name {
+	case "DIRENV_DIR", "DIRENV_FILE", "DIRENV_DIFF", "DIRENV_WATCHES":
+		return true
+	}
+	return false
+}

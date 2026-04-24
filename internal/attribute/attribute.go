@@ -8,39 +8,23 @@ import (
 	"envocabulary/internal/model"
 )
 
-var deferredListVars = map[string]bool{
-	"PATH":                       true,
-	"MANPATH":                    true,
-	"INFOPATH":                   true,
-	"FPATH":                      true,
-	"CDPATH":                     true,
-	"DYLD_LIBRARY_PATH":          true,
-	"DYLD_FALLBACK_LIBRARY_PATH": true,
-	"DYLD_FRAMEWORK_PATH":        true,
-}
+func Attribute(current map[string]string, trace []model.TraceEntry) []model.EnWord {
+	last := lastWriters(trace)
 
-var direnvVars = map[string]bool{
-	"DIRENV_DIR":     true,
-	"DIRENV_FILE":    true,
-	"DIRENV_DIFF":    true,
-	"DIRENV_WATCHES": true,
-}
-
-func Attribute(current map[string]string, trace map[string]model.TraceEntry) []model.EnWord {
 	out := make([]model.EnWord, 0, len(current))
 	for name, value := range current {
 		w := model.EnWord{Name: name, Value: value}
 
 		switch {
-		case deferredListVars[name]:
+		case model.IsDeferredListVar(name):
 			w.Origin = model.OriginDeferred
 			w.Source = "multi-source; `envocabulary path` (TODO)"
 
-		case direnvVars[name]:
+		case model.IsDirenvVar(name):
 			w.Origin = model.OriginDirenv
 
 		default:
-			if t, ok := trace[name]; ok {
+			if t, ok := last[name]; ok {
 				w.Origin = model.OriginShellFile
 				w.Source = fmt.Sprintf("%s:%d", t.File, t.Line)
 			} else {
@@ -60,6 +44,14 @@ func Attribute(current map[string]string, trace map[string]model.TraceEntry) []m
 		return out[i].Name < out[j].Name
 	})
 	return out
+}
+
+func lastWriters(trace []model.TraceEntry) map[string]model.TraceEntry {
+	m := make(map[string]model.TraceEntry, len(trace))
+	for _, e := range trace {
+		m[e.Name] = e
+	}
+	return m
 }
 
 func originRank(o model.Origin) int {

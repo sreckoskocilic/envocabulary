@@ -1,6 +1,10 @@
 package capture
 
-import "testing"
+import (
+	"envocabulary/internal/model"
+	"reflect"
+	"testing"
+)
 
 func TestParseNullSeparated(t *testing.T) {
 	tests := []struct {
@@ -32,103 +36,91 @@ func TestParseNullSeparated(t *testing.T) {
 	}
 }
 
-type traceWant struct {
-	file string
-	line int
-}
-
 func TestParseTrace(t *testing.T) {
 	tests := []struct {
 		name string
 		in   string
-		want map[string]traceWant
+		want []model.TraceEntry
 	}{
 		{
 			"export assignment",
 			"+/u/foo/.zshrc:3> export FOO=bar\n",
-			map[string]traceWant{"FOO": {"/u/foo/.zshrc", 3}},
+			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 3, Name: "FOO", Raw: "export FOO=bar"}},
 		},
 		{
 			"bare assignment",
 			"+/u/foo/.zshrc:5> FOO=bar\n",
-			map[string]traceWant{"FOO": {"/u/foo/.zshrc", 5}},
+			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 5, Name: "FOO", Raw: "FOO=bar"}},
 		},
 		{
 			"typeset with combined flags",
 			"+/u/foo/.zshrc:8> typeset -gx FOO=bar\n",
-			map[string]traceWant{"FOO": {"/u/foo/.zshrc", 8}},
+			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 8, Name: "FOO", Raw: "typeset -gx FOO=bar"}},
 		},
 		{
 			"typeset with separate flags",
 			"+/u/foo/.zshrc:9> typeset -g -x FOO=bar\n",
-			map[string]traceWant{"FOO": {"/u/foo/.zshrc", 9}},
+			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 9, Name: "FOO", Raw: "typeset -g -x FOO=bar"}},
 		},
 		{
 			"declare with no flags",
 			"+/u/foo/.zshrc:10> declare FOO=bar\n",
-			map[string]traceWant{"FOO": {"/u/foo/.zshrc", 10}},
+			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 10, Name: "FOO", Raw: "declare FOO=bar"}},
 		},
 		{
 			"local with flag",
 			"+/u/foo/.zshrc:11> local -r FOO=bar\n",
-			map[string]traceWant{"FOO": {"/u/foo/.zshrc", 11}},
+			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 11, Name: "FOO", Raw: "local -r FOO=bar"}},
 		},
 		{
-			"last writer wins",
+			"all writers preserved in order",
 			"+/u/foo/.zprofile:1> FOO=first\n+/u/foo/.zshrc:20> FOO=second\n",
-			map[string]traceWant{"FOO": {"/u/foo/.zshrc", 20}},
+			[]model.TraceEntry{
+				{File: "/u/foo/.zprofile", Line: 1, Name: "FOO", Raw: "FOO=first"},
+				{File: "/u/foo/.zshrc", Line: 20, Name: "FOO", Raw: "FOO=second"},
+			},
 		},
 		{
 			"nested context double plus",
 			"++/u/foo/.zshrc:15> FOO=bar\n",
-			map[string]traceWant{"FOO": {"/u/foo/.zshrc", 15}},
+			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 15, Name: "FOO", Raw: "FOO=bar"}},
 		},
 		{
 			"deeply nested context",
 			"++++/u/foo/helpers.zsh:4> FOO=bar\n",
-			map[string]traceWant{"FOO": {"/u/foo/helpers.zsh", 4}},
+			[]model.TraceEntry{{File: "/u/foo/helpers.zsh", Line: 4, Name: "FOO", Raw: "FOO=bar"}},
 		},
 		{
 			"non-assignment line ignored",
 			"+/u/foo/.zshrc:30> echo hello\n",
-			map[string]traceWant{},
+			nil,
 		},
 		{
 			"value contains equals signs",
 			"+/u/foo/.zshrc:31> FOO=a=b=c\n",
-			map[string]traceWant{"FOO": {"/u/foo/.zshrc", 31}},
+			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 31, Name: "FOO", Raw: "FOO=a=b=c"}},
 		},
 		{
 			"non-trace lines in stream are ignored",
 			"noise line\n+/u/foo/.zshrc:40> FOO=bar\nmore noise\n",
-			map[string]traceWant{"FOO": {"/u/foo/.zshrc", 40}},
+			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 40, Name: "FOO", Raw: "FOO=bar"}},
 		},
 		{
 			"multiple vars in one line captures only first (known limitation)",
 			"+/u/foo/.zshrc:50> export A=1 B=2\n",
-			map[string]traceWant{"A": {"/u/foo/.zshrc", 50}},
+			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 50, Name: "A", Raw: "export A=1 B=2"}},
 		},
 		{
 			"empty input",
 			"",
-			map[string]traceWant{},
+			nil,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := parseTrace(tc.in)
-			if len(got) != len(tc.want) {
-				t.Fatalf("len: got %d want %d (got=%+v)", len(got), len(tc.want), got)
-			}
-			for k, v := range tc.want {
-				entry, ok := got[k]
-				if !ok {
-					t.Errorf("missing key %q", k)
-					continue
-				}
-				if entry.File != v.file || entry.Line != v.line {
-					t.Errorf("key %q: got %s:%d want %s:%d", k, entry.File, entry.Line, v.file, v.line)
-				}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %+v\nwant %+v", got, tc.want)
 			}
 		})
 	}

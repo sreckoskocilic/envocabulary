@@ -20,7 +20,7 @@ func CurrentEnv() (map[string]string, error) {
 	return parseNullSeparated(out), nil
 }
 
-func TracedStartup() (map[string]model.TraceEntry, error) {
+func TracedStartup() ([]model.TraceEntry, error) {
 	cmd := exec.Command("zsh", "-l", "-i", "-x", "-c", "exit")
 	cmd.Env = envWithPS4()
 	var stderr bytes.Buffer
@@ -66,8 +66,8 @@ var (
 	assignRe    = regexp.MustCompile(`(?:^|\s)(?:export\s+|typeset(?:\s+-[a-zA-Z]+)*\s+|declare(?:\s+-[a-zA-Z]+)*\s+|local(?:\s+-[a-zA-Z]+)*\s+)?([A-Za-z_][A-Za-z0-9_]*)=`)
 )
 
-func parseTrace(s string) map[string]model.TraceEntry {
-	last := make(map[string]model.TraceEntry)
+func parseTrace(s string) []model.TraceEntry {
+	var entries []model.TraceEntry
 	for _, line := range strings.Split(s, "\n") {
 		m := traceLineRe.FindStringSubmatch(line)
 		if m == nil {
@@ -79,8 +79,7 @@ func parseTrace(s string) map[string]model.TraceEntry {
 		if am == nil {
 			continue
 		}
-		name := am[1]
-		last[name] = model.TraceEntry{File: file, Line: ln, Name: name, Raw: rest}
+		entries = append(entries, model.TraceEntry{File: file, Line: ln, Name: am[1], Raw: rest})
 	}
-	return last
+	return entries
 }
