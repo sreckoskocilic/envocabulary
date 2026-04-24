@@ -22,10 +22,10 @@ type EnWord struct {
 }
 
 type TraceEntry struct {
-	File string
-	Line int
-	Name string
-	Raw  string
+	File string `json:"file"`
+	Line int    `json:"line"`
+	Name string `json:"name"`
+	Raw  string `json:"raw,omitempty"`
 }
 
 func IsDeferredListVar(name string) bool {
