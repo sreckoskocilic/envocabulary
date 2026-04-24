@@ -8,6 +8,8 @@ Emergency forensics for macOS env variables. For every variable `env` prints in 
 
 Read-only. Designed for the moment you ask *"why on earth is `FOO` set to that?"* and your shell config sprawls across five files.
 
+There's also a complementary set of static-file subcommands — `inventory`, `catalog`, `dedup`, `clean` — for auditing shell config drift without running it. See [Usage](#usage).
+
 ## Install
 
 Requires Go 1.22+ and zsh as your login shell (the tracer invokes `zsh -l -i`).
@@ -80,6 +82,78 @@ JAVA_HOME
 
 The `winner` marker is the assignment that set the final value. Earlier writers are shown so you can spot conflicting config.
 
+### Inventory shell config files
+
+```
+envocabulary inventory
+```
+
+Walks your canonical zsh files (`.zshenv`, `.zprofile`, `.zshrc`, `.zlogin`, `.zlogout` in `$ZDOTDIR` or `$HOME`) plus bash files and orphan variants (`.zshrc.backup`, `.zshrc.old`, etc.). Reports counts and names per file, grouped by kind:
+
+```
+## /Users/you/.zshrc
+  exports     12  ZSH, PATH, PATH, LANG, LC_ALL, ...
+  assigns      5  ZSH_THEME, plugins, DISABLE_MAGIC_FUNCTIONS, fpath, output
+  aliases      1  claude-mem
+  functions    1  pip
+  sources      2  $ZSH/oh-my-zsh.sh, ~/.zprofile
+```
+
+Good for a quick "what's defined where."
+
+### Catalog all contents into one scrollable stream
+
+```
+envocabulary catalog                  # canonical zsh files, login order
+envocabulary catalog -n               # with line numbers
+envocabulary catalog --orphans        # include .zshrc.backup.* files
+envocabulary catalog --bash           # include .bashrc / .bash_profile / .profile
+envocabulary catalog --dedup          # annotate lines overridden by a later writer
+envocabulary catalog | less
+```
+
+One concatenated stream instead of opening ten files. Files are emitted in zsh login order, separated by banner headers, so reading top-to-bottom mirrors execution order.
+
+`--dedup` turns each duplicate-earlier-writer line into a shell comment prefixed with `# [overridden by file:line]`, so the output is still valid shell and you can see exactly what gets shadowed:
+
+```
+# [overridden by /Users/you/.zshrc:42] export JAVA_HOME=$(/usr/libexec/java_home)
+```
+
+### Dedup: find duplicate exports/aliases/functions across files
+
+```
+envocabulary dedup
+envocabulary dedup --orphans          # include orphan files in the search
+envocabulary dedup --bash             # include bash config files
+```
+
+Groups duplicates by kind + name and shows which occurrence wins (last writer in execution order) and which are shadowed:
+
+```
+## export
+  JAVA_HOME
+    winner  /Users/you/.zprofile:46
+    loser   /Users/you/.zprofile:37
+```
+
+Colon-accumulated vars (`PATH`, `MANPATH`, `FPATH`, `INFOPATH`, `CDPATH`, `DYLD_*`) are deliberately excluded — multiple `export PATH=...` lines extend rather than override, so calling them duplicates would lie. Sources are also excluded (re-sourcing the same file from multiple places is usually intentional).
+
+### Clean boilerplate comments from a config file
+
+```
+envocabulary clean ~/.zshrc                           # outputs cleaned content to stdout
+envocabulary clean ~/.zshrc > ~/.zshrc.cleaned        # you apply it yourself
+diff ~/.zshrc ~/.zshrc.cleaned                        # review before replacing
+```
+
+Strips default/template comments while preserving your own:
+
+- **Strips**: multi-line prose blocks (oh-my-zsh template help text), commented-out example code (`# export ZSH_THEME=...`, `# plugins=(...)`).
+- **Keeps**: single-line section headers (`# aliases`), decorated header blocks (`# --- env vars ---`), shebangs, all real code, any comment that doesn't clearly match a strip rule.
+
+**Writes to stdout only.** The tool will not modify the input file — you do the redirect and the replace yourself. See [Scope](#scope).
+
 ## Origin taxonomy
 
 | Origin              | Meaning                                                                                      |
@@ -115,3 +189,5 @@ The `winner` marker is the assignment that set the final value. Earlier writers 
 ## Scope
 
 envocabulary is intentionally read-only. It will never `unset`, `rm`, or edit your shell config. An emergency tool must not be the thing that makes the emergency worse. If you want to clean things up, copy the file:line pointers and do the edits yourself.
+
+This applies to subcommands that look like mutations too: `clean` outputs to stdout only and never touches the input file. You do the redirect and the replace.
