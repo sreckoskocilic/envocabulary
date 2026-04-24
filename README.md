@@ -1,5 +1,9 @@
 # envocabulary
 
+[![CI](https://github.com/sreckoskocilic/envocabulary/actions/workflows/ci.yml/badge.svg)](https://github.com/sreckoskocilic/envocabulary/actions/workflows/ci.yml)
+[![Go Version](https://img.shields.io/badge/go-1.22+-00ADD8?logo=go)](https://go.dev/)
+[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)](https://www.apple.com/macos/)
+
 Emergency forensics for macOS env variables. For every variable `env` prints in your current shell, it tells you where that variable came from: a specific shell file and line, direnv, launchd, terminal app, SSH, or system.
 
 Read-only. Designed for the moment you ask *"why on earth is `FOO` set to that?"* and your shell config sprawls across five files.
@@ -9,12 +13,10 @@ Read-only. Designed for the moment you ask *"why on earth is `FOO` set to that?"
 Requires Go 1.22+ and zsh as your login shell (the tracer invokes `zsh -l -i`).
 
 ```
-git clone <repo>
-cd envocabulary
-go build -o envocabulary ./cmd/envocabulary
+go install github.com/sreckoskocilic/envocabulary/cmd/envocabulary@latest
 ```
 
-Drop the resulting `envocabulary` binary anywhere on your `$PATH`.
+Make sure `$(go env GOBIN)` (or `$(go env GOPATH)/bin`) is on your `$PATH`.
 
 ## Usage
 
