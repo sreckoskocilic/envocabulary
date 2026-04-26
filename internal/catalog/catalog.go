@@ -9,8 +9,9 @@ import (
 	"sort"
 	"strings"
 
-	"envocabulary/internal/dedup"
-	"envocabulary/internal/inventory"
+	"github.com/sreckoskocilic/envocabulary/internal/color"
+	"github.com/sreckoskocilic/envocabulary/internal/dedup"
+	"github.com/sreckoskocilic/envocabulary/internal/inventory"
 )
 
 type Options struct {
@@ -18,6 +19,7 @@ type Options struct {
 	IncludeBash    bool
 	LineNumbers    bool
 	Dedup          bool
+	Color          color.Mode
 }
 
 var zshLoginOrder = map[string]int{
@@ -107,11 +109,15 @@ func writeFile(w io.Writer, f inventory.File, opts Options, losers map[string]de
 		suffix = "  (orphan)"
 	case inventory.RoleCanonicalBash:
 		suffix = "  (bash)"
+	case inventory.RoleCanonicalZsh:
+		// no suffix — canonical zsh files are the default presentation
 	}
 	bar := strings.Repeat("=", 68)
 	fmt.Fprintf(w, "# %s\n", bar)
 	fmt.Fprintf(w, "# %s%s\n", f.Path, suffix)
 	fmt.Fprintf(w, "# %s\n", bar)
+
+	colorOn := opts.Color.Enabled(w)
 
 	sc := bufio.NewScanner(fh)
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
@@ -119,15 +125,18 @@ func writeFile(w io.Writer, f inventory.File, opts Options, losers map[string]de
 	for sc.Scan() {
 		lineNo++
 		text := sc.Text()
+		overridden := false
 		if opts.Dedup && losers != nil {
 			if winner, ok := losers[dedup.Key(f.Path, lineNo)]; ok {
 				text = fmt.Sprintf("# [overridden by %s:%d] %s", winner.File, winner.Line, text)
+				overridden = true
 			}
 		}
 		if opts.LineNumbers {
-			fmt.Fprintf(w, "%5d  %s\n", lineNo, text)
+			line := fmt.Sprintf("%5d  %s", lineNo, text)
+			fmt.Fprintln(w, color.Wrap(line, color.LightRed, overridden && colorOn))
 		} else {
-			fmt.Fprintln(w, text)
+			fmt.Fprintln(w, color.Wrap(text, color.LightRed, overridden && colorOn))
 		}
 	}
 	return sc.Err()

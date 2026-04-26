@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 
-	"envocabulary/internal/buckets"
-	"envocabulary/internal/model"
+	"github.com/sreckoskocilic/envocabulary/internal/buckets"
+	"github.com/sreckoskocilic/envocabulary/internal/model"
 )
 
 func Attribute(current map[string]string, trace []model.TraceEntry) []model.EnWord {

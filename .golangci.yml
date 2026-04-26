@@ -1,0 +1,115 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    # correctness / bugs
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - errorlint
+    - exhaustive
+    - nilerr
+    - bodyclose
+    - copyloopvar
+    - predeclared
+    - unconvert
+    - unparam
+
+    # security
+    - gosec
+
+    # style / formatting
+    - gofumpt
+    - goimports
+    - whitespace
+    - godot
+    - misspell
+    - revive
+    - gocritic
+
+    # complexity / quality
+    - gocyclo
+    - gocognit
+    - prealloc
+    - nakedret
+
+    # tests
+    - thelper
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  gocognit:
+    min-complexity: 25
+  nakedret:
+    max-func-lines: 10
+
+  errcheck:
+    check-type-assertions: true
+    check-blank: false
+
+  exhaustive:
+    default-signifies-exhaustive: true
+
+  godot:
+    scope: declarations
+    capital: false
+
+  misspell:
+    locale: US
+
+  revive:
+    severity: warning
+    rules:
+      - name: var-naming
+      - name: error-return
+      - name: error-naming
+      - name: error-strings
+      - name: errorf
+      - name: indent-error-flow
+      - name: blank-imports
+      - name: context-as-argument
+      - name: dot-imports
+      - name: increment-decrement
+      - name: range
+      - name: receiver-naming
+      - name: unexported-return
+      - name: var-declaration
+      - name: unreachable-code
+      - name: redefines-builtin-id
+
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - performance
+      - style
+    disabled-checks:
+      - ifElseChain   # we have legitimate switch-as-if patterns
+      - hugeParam     # not worth optimizing for a CLI
+
+  gofumpt:
+    extra-rules: true
+
+issues:
+  exclude-dirs:
+    - dist
+    - vendor
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - gocognit
+        - errcheck
+        - gosec
+    - path: cmd/envocabulary/main\.go
+      linters:
+        - gocyclo    # help-text functions inflate complexity but are flat
+        - gocognit
+        - funlen
+  max-issues-per-linter: 0
+  max-same-issues: 0

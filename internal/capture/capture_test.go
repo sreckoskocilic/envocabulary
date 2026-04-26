@@ -1,9 +1,10 @@
 package capture
 
 import (
-	"envocabulary/internal/model"
 	"reflect"
 	"testing"
+
+	"github.com/sreckoskocilic/envocabulary/internal/model"
 )
 
 func TestParseNullSeparated(t *testing.T) {

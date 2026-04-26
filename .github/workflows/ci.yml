@@ -6,6 +6,18 @@ on:
   pull_request:
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64.8
+          args: --timeout=5m
+
   test:
     runs-on: macos-latest
     steps:
@@ -15,4 +27,21 @@ jobs:
           go-version: '1.22'
       - run: go build ./...
       - run: go vet ./...
-      - run: go test ./...
+      - name: Run tests with coverage
+        run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
+      - name: Coverage threshold gate
+        run: |
+          total=$(go tool cover -func=coverage.out | awk '/total:/ {gsub(/%/,"",$3); print int($3)}')
+          echo "Total coverage: $total%"
+          if [ "$total" -lt 85 ]; then
+            echo "✗ coverage $total% is below minimum 85%"
+            exit 1
+          fi
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.out
+          fail_ci_if_error: false
+          verbose: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

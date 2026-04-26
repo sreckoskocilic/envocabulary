@@ -41,8 +41,10 @@ type File struct {
 	Err   error
 }
 
-var canonicalZshNames = []string{".zshenv", ".zprofile", ".zshrc", ".zlogin", ".zlogout"}
-var canonicalBashNames = []string{".bashrc", ".bash_profile", ".profile"}
+var (
+	canonicalZshNames  = []string{".zshenv", ".zprofile", ".zshrc", ".zlogin", ".zlogout"}
+	canonicalBashNames = []string{".bashrc", ".bash_profile", ".profile"}
+)
 
 var orphanPrefixes = []string{
 	".zshenv", ".zprofile", ".zshrc", ".zlogin", ".zlogout",
@@ -59,7 +61,7 @@ func Discover() []File {
 		zdot = home
 	}
 
-	var files []File
+	files := make([]File, 0, len(canonicalZshNames)+len(canonicalBashNames))
 	seen := map[string]bool{}
 
 	for _, n := range canonicalZshNames {
@@ -96,7 +98,7 @@ func scanOrphans(dir string, seen map[string]bool) []string {
 	if err != nil {
 		return nil
 	}
-	var out []string
+	out := make([]string, 0, len(entries))
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -153,12 +155,12 @@ func parseFile(path string, role Role) File {
 }
 
 var (
-	exportRe   = regexp.MustCompile(`^\s*export\s+([A-Za-z_][A-Za-z0-9_]*)`)
-	assignRe   = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_]*)=`)
-	aliasRe    = regexp.MustCompile(`^\s*alias\s+(?:-[a-zA-Z]+\s+)*([A-Za-z_][A-Za-z0-9_.-]*)=`)
-	funcKwRe   = regexp.MustCompile(`^\s*function\s+([A-Za-z_][A-Za-z0-9_.-]*)`)
+	exportRe    = regexp.MustCompile(`^\s*export\s+([A-Za-z_][A-Za-z0-9_]*)`)
+	assignRe    = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_]*)=`)
+	aliasRe     = regexp.MustCompile(`^\s*alias\s+(?:-[a-zA-Z]+\s+)*([A-Za-z_][A-Za-z0-9_.-]*)=`)
+	funcKwRe    = regexp.MustCompile(`^\s*function\s+([A-Za-z_][A-Za-z0-9_.-]*)`)
 	funcParenRe = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_.-]*)\s*\(\s*\)`)
-	sourceRe   = regexp.MustCompile(`^\s*(?:source|\.)\s+(\S+)`)
+	sourceRe    = regexp.MustCompile(`^\s*(?:source|\.)\s+(\S+)`)
 )
 
 var reservedFuncNames = map[string]bool{
@@ -193,7 +195,7 @@ func ParseReader(r io.Reader) ([]Item, error) {
 			items = append(items, Item{Kind: KindFunction, Name: m[1], Line: lineNo})
 			continue
 		}
-		if m := funcParenRe.FindStringSubmatch(line); m != nil && !reservedFuncNames[m[1]] {
+		if m := funcParenRe.FindStringSubmatch(line); len(m) > 1 && !reservedFuncNames[m[1]] {
 			items = append(items, Item{Kind: KindFunction, Name: m[1], Line: lineNo})
 			continue
 		}
@@ -201,7 +203,7 @@ func ParseReader(r io.Reader) ([]Item, error) {
 			items = append(items, Item{Kind: KindSource, Name: m[1], Line: lineNo})
 			continue
 		}
-		if m := assignRe.FindStringSubmatch(line); m != nil && !reservedFuncNames[m[1]] {
+		if m := assignRe.FindStringSubmatch(line); len(m) > 1 && !reservedFuncNames[m[1]] {
 			items = append(items, Item{Kind: KindAssign, Name: m[1], Line: lineNo})
 			continue
 		}

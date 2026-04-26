@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"envocabulary/internal/model"
+	"github.com/sreckoskocilic/envocabulary/internal/model"
 )
 
 func CurrentEnv() (map[string]string, error) {
@@ -20,17 +20,42 @@ func CurrentEnv() (map[string]string, error) {
 	return parseNullSeparated(out), nil
 }
 
-func TracedStartup() ([]model.TraceEntry, error) {
+// Tracer abstracts the source of raw zsh xtrace output so that the trace-parsing
+// pipeline can be tested with synthetic input instead of spawning a real zsh process.
+type Tracer interface {
+	RawTrace() (string, error)
+}
+
+// ZshTracer is the production Tracer that spawns `zsh -l -i -x -c exit` and
+// captures its stderr (which contains the xtrace output).
+type ZshTracer struct{}
+
+func (ZshTracer) RawTrace() (string, error) {
 	cmd := exec.Command("zsh", "-l", "-i", "-x", "-c", "exit")
 	cmd.Env = envWithPS4()
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	err := cmd.Run()
-	trace := parseTrace(stderr.String())
-	if err != nil && len(trace) == 0 {
-		return nil, fmt.Errorf("zsh trace: %w", err)
+	out := stderr.String()
+	if err != nil && out == "" {
+		return "", fmt.Errorf("zsh trace: %w", err)
 	}
-	return trace, nil
+	return out, nil
+}
+
+// TracedStartup runs zsh and parses its xtrace output. Production callers use this.
+func TracedStartup() ([]model.TraceEntry, error) {
+	return TracedStartupWith(ZshTracer{})
+}
+
+// TracedStartupWith runs the given Tracer and parses its raw output.
+// Tests inject a fake Tracer to drive the parser without spawning any subprocess.
+func TracedStartupWith(t Tracer) ([]model.TraceEntry, error) {
+	raw, err := t.RawTrace()
+	if err != nil {
+		return nil, err
+	}
+	return parseTrace(raw), nil
 }
 
 func envWithPS4() []string {
@@ -67,8 +92,9 @@ var (
 )
 
 func parseTrace(s string) []model.TraceEntry {
-	var entries []model.TraceEntry
-	for _, line := range strings.Split(s, "\n") {
+	lines := strings.Split(s, "\n")
+	var entries []model.TraceEntry //nolint:prealloc // most lines are non-trace noise; allocating len(lines) wastes memory
+	for _, line := range lines {
 		m := traceLineRe.FindStringSubmatch(line)
 		if m == nil {
 			continue

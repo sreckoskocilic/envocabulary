@@ -84,17 +84,17 @@ func TestClean(t *testing.T) {
 
 func TestIsCommentedCode(t *testing.T) {
 	cases := map[string]bool{
-		`export FOO=bar`:                    true,
-		`alias ll='ls -la'`:                 true,
-		`function mkcd { :; }`:              true,
-		`mkcd() { :; }`:                     true,
-		`source /tmp/foo`:                   true,
-		`. /tmp/foo`:                        true,
-		`plugins=(git)`:                     true,
-		`ZSH_THEME="robbyrussell"`:          true,
+		`export FOO=bar`:                     true,
+		`alias ll='ls -la'`:                  true,
+		`function mkcd { :; }`:               true,
+		`mkcd() { :; }`:                      true,
+		`source /tmp/foo`:                    true,
+		`. /tmp/foo`:                         true,
+		`plugins=(git)`:                      true,
+		`ZSH_THEME="robbyrussell"`:           true,
 		`If you come from bash you might...`: false,
-		`aliases`:                           false,
-		``:                                  false,
+		`aliases`:                            false,
+		``:                                   false,
 	}
 	for in, want := range cases {
 		if got := isCommentedCode(in); got != want {

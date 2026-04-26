@@ -1,0 +1,102 @@
+version: 2
+
+project_name: envocabulary
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: envocabulary
+    main: ./cmd/envocabulary
+    binary: envocabulary
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.ShortCommit}}
+      - -X main.date={{.Date}}
+    goos:
+      - darwin
+      - linux
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+      - "386"
+      - arm
+    goarm:
+      - "7"
+    ignore:
+      - goos: darwin
+        goarch: "386"
+      - goos: darwin
+        goarch: arm
+      - goos: freebsd
+        goarch: "386"
+      - goos: freebsd
+        goarch: arm
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: '{{ .ProjectName }}_{{ .Version }}_checksums.txt'
+  algorithm: sha256
+
+nfpms:
+  - id: linux-packages
+    package_name: envocabulary
+    vendor: Srecko Skocilic
+    homepage: https://github.com/sreckoskocilic/envocabulary
+    maintainer: Srecko Skocilic <srecko.skocilic@gmail.com>
+    description: |
+      Forensics and audit toolkit for shell environments.
+      Tells you where each env var came from and audits your shell
+      config files for drift, duplicates, and dead lines.
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+      - archlinux
+    bindir: /usr/bin
+    section: utils
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+      - "Merge pull request"
+      - "Merge branch"
+
+release:
+  github:
+    owner: sreckoskocilic
+    name: envocabulary
+  draft: false
+  prerelease: auto
+  name_template: "v{{.Version}}"
+  footer: |
+    ## Install
+
+    See the [README](https://github.com/sreckoskocilic/envocabulary#install) for full instructions.
+
+    Quick install:
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/sreckoskocilic/envocabulary/main/install.sh | sh
+    ```

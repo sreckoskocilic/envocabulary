@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"envocabulary/internal/inventory"
+	"github.com/sreckoskocilic/envocabulary/internal/inventory"
 )
 
 func TestFind(t *testing.T) {

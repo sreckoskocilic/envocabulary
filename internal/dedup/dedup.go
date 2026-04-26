@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"envocabulary/internal/inventory"
+	"github.com/sreckoskocilic/envocabulary/internal/inventory"
 )
 
 type Occurrence struct {
@@ -72,14 +72,14 @@ func Find(files []inventory.File) []Group {
 		buckets[key] = append(buckets[key], e)
 	}
 
-	var groups []Group
+	groups := make([]Group, 0, len(buckets))
 	for _, b := range buckets {
 		if len(b) < 2 {
 			continue
 		}
 		sort.Slice(b, func(i, j int) bool { return b[i].rank < b[j].rank })
 		winner := b[len(b)-1].occ
-		var losers []Occurrence
+		losers := make([]Occurrence, 0, len(b)-1)
 		for _, e := range b[:len(b)-1] {
 			losers = append(losers, e.occ)
 		}

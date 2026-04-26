@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
-	"envocabulary/internal/buckets"
-	"envocabulary/internal/model"
+	"github.com/sreckoskocilic/envocabulary/internal/buckets"
+	"github.com/sreckoskocilic/envocabulary/internal/model"
 )
 
 type Result struct {

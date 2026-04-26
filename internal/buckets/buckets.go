@@ -4,7 +4,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"envocabulary/internal/model"
+	"github.com/sreckoskocilic/envocabulary/internal/model"
 )
 
 var terminalVars = map[string]bool{
@@ -71,7 +71,7 @@ var shellManagedVars = map[string]bool{
 	"BASH_VERSION":  true,
 }
 
-func Classify(name, value string) (model.Origin, string) {
+func Classify(name, value string) (origin model.Origin, source string) {
 	if strings.HasPrefix(name, "ITERM_") || strings.HasPrefix(name, "ITERM2_") {
 		return model.OriginTerminal, "iTerm"
 	}

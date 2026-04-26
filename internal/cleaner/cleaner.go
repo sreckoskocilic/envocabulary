@@ -12,17 +12,23 @@ type Stats struct {
 	Stripped int
 }
 
+type Decision struct {
+	LineNum int
+	Content string
+	Kept    bool
+}
+
 var (
 	commentInnerRe = regexp.MustCompile(`^\s*#\s?(.*)$`)
 	decorationRe   = regexp.MustCompile(`^[-=#*~_+/\\]+$`)
 
-	commentedExportRe   = regexp.MustCompile(`^export\s+[A-Za-z_]`)
-	commentedAliasRe    = regexp.MustCompile(`^alias\s+`)
-	commentedFuncKwRe   = regexp.MustCompile(`^function\s+[A-Za-z_]`)
+	commentedExportRe    = regexp.MustCompile(`^export\s+[A-Za-z_]`)
+	commentedAliasRe     = regexp.MustCompile(`^alias\s+`)
+	commentedFuncKwRe    = regexp.MustCompile(`^function\s+[A-Za-z_]`)
 	commentedFuncParenRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*\s*\(\s*\)`)
-	commentedSourceRe   = regexp.MustCompile(`^(?:source|\.)\s+\S`)
-	commentedAssignRe   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*\s*=`)
-	commentedPluginsRe  = regexp.MustCompile(`^plugins\s*=\s*\(`)
+	commentedSourceRe    = regexp.MustCompile(`^(?:source|\.)\s+\S`)
+	commentedAssignRe    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*\s*=`)
+	commentedPluginsRe   = regexp.MustCompile(`^plugins\s*=\s*\(`)
 )
 
 type lineInfo struct {
@@ -32,7 +38,9 @@ type lineInfo struct {
 	inner     string
 }
 
-func Clean(r io.Reader) (string, Stats, error) {
+// Process reads r and returns a per-line decision for every line in the file.
+// Caller assembles the final output (full cleaned content vs. dry-run diff).
+func Process(r io.Reader) ([]Decision, Stats, error) {
 	var lines []string
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
@@ -40,7 +48,7 @@ func Clean(r io.Reader) (string, Stats, error) {
 		lines = append(lines, sc.Text())
 	}
 	if err := sc.Err(); err != nil {
-		return "", Stats{}, err
+		return nil, Stats{}, err
 	}
 
 	info := make([]lineInfo, len(lines))
@@ -59,10 +67,10 @@ func Clean(r io.Reader) (string, Stats, error) {
 		}
 	}
 
-	decisions := make([]bool, len(lines))
+	keepMask := make([]bool, len(lines))
 	for i := 0; i < len(lines); {
 		if !info[i].isComment {
-			decisions[i] = true
+			keepMask[i] = true
 			i++
 			continue
 		}
@@ -72,19 +80,35 @@ func Clean(r io.Reader) (string, Stats, error) {
 		}
 		keep := shouldKeepBlock(info[i:j])
 		for k := i; k < j; k++ {
-			decisions[k] = keep
+			keepMask[k] = keep
 		}
 		i = j
 	}
 
 	var stats Stats
-	var out []string
+	decisions := make([]Decision, len(lines))
 	for i, ln := range lines {
-		if decisions[i] {
-			out = append(out, ln)
+		decisions[i] = Decision{LineNum: i + 1, Content: ln, Kept: keepMask[i]}
+		if keepMask[i] {
 			stats.Kept++
 		} else {
 			stats.Stripped++
+		}
+	}
+	return decisions, stats, nil
+}
+
+// Clean returns the file content with stripped lines removed.
+// Convenience wrapper around Process for callers that just want the cleaned text.
+func Clean(r io.Reader) (string, Stats, error) {
+	decisions, stats, err := Process(r)
+	if err != nil {
+		return "", stats, err
+	}
+	var out []string
+	for _, d := range decisions {
+		if d.Kept {
+			out = append(out, d.Content)
 		}
 	}
 	return strings.Join(out, "\n") + "\n", stats, nil
