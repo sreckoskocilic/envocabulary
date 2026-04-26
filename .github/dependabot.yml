@@ -7,6 +7,9 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+    ignore:
+      - dependency-name: "golangci/golangci-lint-action"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: gomod
     directory: /
