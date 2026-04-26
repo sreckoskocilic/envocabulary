@@ -13,7 +13,7 @@ Forensics and audit toolkit for shell environments. Two layers, one CLI:
 
 Read-only. It will never `unset`, `rm`, or edit your shell config. Designed for the moment you ask *"why on earth is `ENV_VAR` set to that?"* and your shell config sprawls across five files.
 
-> **Shell support.** Live-env commands (`scan`, `explain`) currently require zsh. Static-file commands (`inventory`, `catalog`, `dedup`, `clean`) work with both zsh and bash. fish, nu, csh/tcsh, and PowerShell are not supported. Platforms: macOS, Linux, FreeBSD (amd64, arm64, plus 386/armv7 for Linux).
+> **Shell support.** All commands work with both **zsh** and **bash** — the tracer is auto-detected from `$SHELL` and can be overridden with `--shell zsh|bash` on `scan`/`explain`. Static-file commands (`inventory`, `catalog`, `dedup`, `clean`) parse files for both shells too. fish, nu, csh/tcsh, and PowerShell are not supported. Platforms: macOS, Linux, FreeBSD (amd64, arm64, plus 386/armv7 for Linux).
 
 ## Install
 
@@ -72,11 +72,13 @@ For the full flag-by-flag reference, arguments, and example invocations per subc
 
 ### Subcommands at a glance
 
-**Live env (introspect the running shell — currently zsh-only):**
+**Live env (introspect the running shell — zsh and bash supported):**
 
 - **`scan`** *(default)* — one-shot view of every variable in your current shell, grouped by where it came from (shell-file with `file:line`, direnv, launchd, terminal, ssh, system, unknown). Reach for this when something feels wrong about your env and you don't yet know *which* variable is the problem.
 
 - **`explain NAME`** — full attribution for a single variable: every writer in startup order, the winner marked. Reach for this when you already know the misbehaving variable and need to spot which file:line ultimately won — the typical "I set this in two places and forgot" finding.
+
+Both commands auto-detect your shell from `$SHELL` and dispatch to the right tracer. Force a specific shell with `--shell zsh` or `--shell bash` (useful when `$SHELL` is stale inside tmux/SSH/sudo).
 
 **Static config (audit shell config files without running them — zsh + bash):**
 
@@ -108,7 +110,7 @@ For the full flag-by-flag reference, arguments, and example invocations per subc
 - If startup tracing fails on your machine, the scan warns and falls back to classify-only attribution.
 - Some variables land in `unknown` — typically parent-process injection (a tool that `exec`s your CLI with extra env).
 
-Bug reports for breakage on a new zsh release: open a [GitHub issue](https://github.com/sreckoskocilic/envocabulary/issues) with your `zsh --version` and a snippet of the broken output.
+Bug reports for breakage on a new zsh or bash release: open a [GitHub issue](https://github.com/sreckoskocilic/envocabulary/issues) with the output of `zsh --version` or `bash --version` and a snippet of the broken output.
 
 ## Scope
 

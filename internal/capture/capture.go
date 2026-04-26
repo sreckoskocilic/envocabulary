@@ -2,7 +2,9 @@ package capture
 
 import (
 	"bytes"
+	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -10,8 +12,8 @@ import (
 	"github.com/sreckoskocilic/envocabulary/internal/model"
 )
 
-// Tracer abstracts the source of raw zsh xtrace output so that the trace-parsing
-// pipeline can be tested with synthetic input instead of spawning a real zsh process.
+// Tracer abstracts the source of raw shell xtrace output so that the trace-parsing
+// pipeline can be tested with synthetic input instead of spawning a real shell process.
 type Tracer interface {
 	RawTrace() (string, error)
 }
@@ -26,7 +28,38 @@ func TracedStartupWith(t Tracer) ([]model.TraceEntry, error) {
 	return parseTrace(raw), nil
 }
 
-func envWithPS4() []string {
+// DetectShell returns the user's login shell name (zsh, bash, ...) derived from $SHELL.
+// Defaults to "zsh" if $SHELL is empty, unset, or names a shell we don't support.
+func DetectShell() string {
+	base := filepath.Base(os.Getenv("SHELL"))
+	switch base {
+	case "bash":
+		return "bash"
+	case "zsh", "":
+		return "zsh"
+	}
+	return "zsh"
+}
+
+// TracerForShell returns a Tracer suitable for the named shell.
+// An empty name auto-detects via DetectShell. Unknown shells return an error.
+func TracerForShell(name string) (Tracer, error) {
+	if name == "" {
+		name = DetectShell()
+	}
+	switch name {
+	case "zsh":
+		return ZshTracer{}, nil
+	case "bash":
+		return BashTracer{}, nil
+	}
+	return nil, fmt.Errorf("unsupported shell %q (want zsh or bash)", name)
+}
+
+// envWithPS4 returns os.Environ with any existing PS4 stripped and the given
+// ps4 string appended. Used by both ZshTracer (PS4="+%x:%i> ") and BashTracer
+// (PS4="+${BASH_SOURCE}:${LINENO}> ") to inject the xtrace prefix format.
+func envWithPS4(ps4 string) []string {
 	e := os.Environ()
 	out := make([]string, 0, len(e)+1)
 	for _, kv := range e {
@@ -35,7 +68,7 @@ func envWithPS4() []string {
 		}
 		out = append(out, kv)
 	}
-	out = append(out, `PS4=+%x:%i> `)
+	out = append(out, "PS4="+ps4)
 	return out
 }
 
