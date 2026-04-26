@@ -27,7 +27,14 @@ func runScan(args []string, stdout, stderr io.Writer) int {
 	fs.Usage = func() { helpScan(stdout) }
 	jsonOut := fs.Bool("json", false, "emit JSON instead of grouped text")
 	showValues := fs.Bool("values", false, "include values in output (may expose secrets)")
+	shellFlag := fs.String("shell", "", "force tracer for a specific shell (zsh|bash); default auto-detects from $SHELL")
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	tracer, err := capture.TracerForShell(*shellFlag)
+	if err != nil {
+		fmt.Fprintln(stderr, "error:", err)
 		return 2
 	}
 
@@ -36,7 +43,7 @@ func runScan(args []string, stdout, stderr io.Writer) int {
 		return die(stderr, err)
 	}
 
-	trace, err := capture.TracedStartup()
+	trace, err := capture.TracedStartupWith(tracer)
 	if err != nil {
 		fmt.Fprintf(stderr, "warning: trace unavailable, falling back to classification-only: %v\n", err)
 		trace = nil
@@ -57,6 +64,7 @@ func runExplain(args []string, stdout, stderr io.Writer) int {
 	fs.Usage = func() { helpExplain(stdout) }
 	jsonOut := fs.Bool("json", false, "emit JSON")
 	showValues := fs.Bool("values", false, "include value and raw traced commands (may expose secrets)")
+	shellFlag := fs.String("shell", "", "force tracer for a specific shell (zsh|bash); default auto-detects from $SHELL")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -67,12 +75,18 @@ func runExplain(args []string, stdout, stderr io.Writer) int {
 	}
 	name := fs.Arg(0)
 
+	tracer, err := capture.TracerForShell(*shellFlag)
+	if err != nil {
+		fmt.Fprintln(stderr, "error:", err)
+		return 2
+	}
+
 	current, err := capture.CurrentEnv()
 	if err != nil {
 		return die(stderr, err)
 	}
 
-	trace, err := capture.TracedStartup()
+	trace, err := capture.TracedStartupWith(tracer)
 	if err != nil {
 		fmt.Fprintf(stderr, "warning: trace unavailable: %v\n", err)
 		trace = nil

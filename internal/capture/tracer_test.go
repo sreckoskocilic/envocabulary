@@ -73,11 +73,11 @@ func TestTracedStartupWith_AllNoiseProducesNoEntries(t *testing.T) {
 	}
 }
 
-func TestEnvWithPS4_InjectsPS4(t *testing.T) {
+func TestEnvWithPS4_InjectsPS4ZshFormat(t *testing.T) {
 	t.Setenv("PS4", "OLD")
 	t.Setenv("FOO_TEST_VAR", "marker")
 
-	got := envWithPS4()
+	got := envWithPS4("+%x:%i> ")
 
 	var ps4Count, fooCount int
 	for _, kv := range got {
@@ -99,19 +99,33 @@ func TestEnvWithPS4_InjectsPS4(t *testing.T) {
 	}
 }
 
-func TestEnvWithPS4_AddsPS4WhenAbsent(t *testing.T) {
-	// Note: even after t.Setenv("PS4", "") the var still exists with empty value;
-	// to truly remove we'd need t.Setenv with empty + special handling. Instead,
-	// just verify PS4 always ends up exactly the expected one.
-	got := envWithPS4()
-	hasPS4 := false
+func TestEnvWithPS4_InjectsBashFormat(t *testing.T) {
+	got := envWithPS4("+${BASH_SOURCE}:${LINENO}> ")
+	hasBashPS4 := false
 	for _, kv := range got {
-		if kv == "PS4=+%x:%i> " {
-			hasPS4 = true
+		if kv == "PS4=+${BASH_SOURCE}:${LINENO}> " {
+			hasBashPS4 = true
 		}
 	}
-	if !hasPS4 {
-		t.Errorf("expected injected PS4; got: %v", got)
+	if !hasBashPS4 {
+		t.Errorf("expected bash PS4 to be injected; got: %v", got)
+	}
+}
+
+func TestEnvWithPS4_StripsPreexistingPS4(t *testing.T) {
+	t.Setenv("PS4", "STALE")
+	got := envWithPS4("NEW")
+	count := 0
+	for _, kv := range got {
+		if strings.HasPrefix(kv, "PS4=") {
+			count++
+			if kv != "PS4=NEW" {
+				t.Errorf("expected fresh PS4=NEW, got %q", kv)
+			}
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 PS4, got %d", count)
 	}
 }
 
@@ -161,6 +175,90 @@ func TestCurrentEnv_ErrorWhenEnvBinaryMissing(t *testing.T) {
 // TestZshTracer_Smoke doesn't.
 func TestTracedStartup_Smoke(t *testing.T) {
 	_, _ = TracedStartup()
+}
+
+func TestBashTracer_Smoke(t *testing.T) {
+	out, err := BashTracer{}.RawTrace()
+	if err != nil {
+		t.Logf("bash tracer error (acceptable, e.g. no bash installed): %v", err)
+		return
+	}
+	t.Logf("bash tracer produced %d bytes of trace output", len(out))
+}
+
+func TestBashTracer_ErrorWhenBashUnavailable(t *testing.T) {
+	t.Setenv("PATH", "")
+	_, err := BashTracer{}.RawTrace()
+	if err == nil {
+		t.Errorf("expected error when bash cannot be found on $PATH")
+	}
+}
+
+func TestDetectShell(t *testing.T) {
+	cases := map[string]string{
+		"/bin/zsh":               "zsh",
+		"/usr/local/bin/zsh":     "zsh",
+		"/bin/bash":              "bash",
+		"/opt/homebrew/bin/bash": "bash",
+		"":                       "zsh", // empty default
+		"/usr/bin/fish":          "zsh", // unsupported defaults to zsh
+		"/bin/sh":                "zsh", // sh defaults to zsh too
+	}
+	for shellPath, want := range cases {
+		t.Run(shellPath, func(t *testing.T) {
+			t.Setenv("SHELL", shellPath)
+			if got := DetectShell(); got != want {
+				t.Errorf("DetectShell with SHELL=%q = %q, want %q", shellPath, got, want)
+			}
+		})
+	}
+}
+
+func TestTracerForShell_ExplicitNames(t *testing.T) {
+	z, err := TracerForShell("zsh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := z.(ZshTracer); !ok {
+		t.Errorf("zsh: got %T, want ZshTracer", z)
+	}
+
+	b, err := TracerForShell("bash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := b.(BashTracer); !ok {
+		t.Errorf("bash: got %T, want BashTracer", b)
+	}
+}
+
+func TestTracerForShell_AutoDetect(t *testing.T) {
+	t.Setenv("SHELL", "/bin/bash")
+	got, err := TracerForShell("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got.(BashTracer); !ok {
+		t.Errorf("auto-detect with bash $SHELL: got %T, want BashTracer", got)
+	}
+
+	t.Setenv("SHELL", "/bin/zsh")
+	got, err = TracerForShell("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got.(ZshTracer); !ok {
+		t.Errorf("auto-detect with zsh $SHELL: got %T, want ZshTracer", got)
+	}
+}
+
+func TestTracerForShell_UnknownErrors(t *testing.T) {
+	if _, err := TracerForShell("fish"); err == nil {
+		t.Errorf("expected error for unsupported shell")
+	}
+	if _, err := TracerForShell("powershell"); err == nil {
+		t.Errorf("expected error for unsupported shell")
+	}
 }
 
 // Ensure model.TraceEntry round-trips correctly through TracedStartupWith.
