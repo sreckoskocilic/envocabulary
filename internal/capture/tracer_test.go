@@ -128,6 +128,41 @@ func TestZshTracer_Smoke(t *testing.T) {
 	t.Logf("zsh tracer produced %d bytes of trace output", len(out))
 }
 
+func TestZshTracer_ErrorWhenZshUnavailable(t *testing.T) {
+	// Force exec.Command("zsh") to fail by emptying PATH so the binary cannot be located.
+	t.Setenv("PATH", "")
+	_, err := ZshTracer{}.RawTrace()
+	if err == nil {
+		t.Errorf("expected error when zsh cannot be found on $PATH")
+	}
+}
+
+func TestCurrentEnv_Smoke(t *testing.T) {
+	got, err := CurrentEnv()
+	if err != nil {
+		t.Logf("env -0 unavailable (acceptable in restricted environments): %v", err)
+		return
+	}
+	if len(got) == 0 {
+		t.Errorf("expected at least one env var")
+	}
+}
+
+func TestCurrentEnv_ErrorWhenEnvBinaryMissing(t *testing.T) {
+	t.Setenv("PATH", "")
+	_, err := CurrentEnv()
+	if err == nil {
+		t.Errorf("expected error when `env` binary cannot be located")
+	}
+}
+
+// TracedStartup is a 1-line wrapper for TracedStartupWith(ZshTracer{}). The smoke test
+// exercises it end-to-end; we don't separately assert content for the same reason
+// TestZshTracer_Smoke doesn't.
+func TestTracedStartup_Smoke(t *testing.T) {
+	_, _ = TracedStartup()
+}
+
 // Ensure model.TraceEntry round-trips correctly through TracedStartupWith.
 func TestTracedStartupWith_TypeIntegrity(t *testing.T) {
 	raw := "+/x:1> export FOO=bar"

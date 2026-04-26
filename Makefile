@@ -4,7 +4,7 @@ GO              ?= go
 GOLANGCI_LINT   ?= golangci-lint
 GOFUMPT         ?= gofumpt
 COVERAGE_FILE   ?= coverage.out
-COVERAGE_MIN    ?= 85
+COVERAGE_MIN    ?= 90
 BINARY          ?= envocabulary
 PKGS            ?= ./...
 

@@ -395,6 +395,22 @@ func TestRunDedup_NoDuplicates(t *testing.T) {
 	}
 }
 
+func TestRunDedup_BashAndOrphansFlags(t *testing.T) {
+	setupFakeShellHome(t, map[string]string{
+		".zshrc":        "export FOO=zsh\n",
+		".bashrc":       "export FOO=bash\n",
+		".zshrc.backup": "export FOO=backup\n",
+	})
+	var stdout, stderr bytes.Buffer
+	code := runDedup([]string{"--bash", "--orphans"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("got %d", code)
+	}
+	if !strings.Contains(stdout.String(), "FOO") {
+		t.Errorf("expected FOO duplicates across zsh/bash/orphan; got:\n%s", stdout.String())
+	}
+}
+
 func TestRunDedup_FindsDuplicates(t *testing.T) {
 	setupFakeShellHome(t, map[string]string{
 		".zprofile": "export FOO=first\n",
@@ -505,6 +521,79 @@ func TestRun_DispatchToInventory(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), ".zshrc") {
 		t.Errorf("expected inventory output; got:\n%s", stdout.String())
+	}
+}
+
+func TestRun_DispatchToDedup(t *testing.T) {
+	setupFakeShellHome(t, map[string]string{".zshrc": "export X=1\n"})
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"dedup"}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("expected 0; got %d", code)
+	}
+	if !strings.Contains(stdout.String(), "no duplicates") {
+		t.Errorf("expected dedup empty-state output; got:\n%s", stdout.String())
+	}
+}
+
+func TestRun_DispatchToClean(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config")
+	if err := os.WriteFile(path, []byte("export X=1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"clean", "--color=never", path}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("expected 0; got %d", code)
+	}
+}
+
+func TestRun_LeadingDashNonHelpFallsThroughToScanArgs(t *testing.T) {
+	// Args starting with - that aren't -h/-V/-help/-version must not match
+	// the no-dash subcommand dispatch and must reach the runScan(args) fallthrough.
+	// We can't fully exercise runScan without zsh, but we can verify the dispatch
+	// branch is taken by checking that a flag-parse failure surfaces as exit 2.
+	t.Setenv("PATH", "")
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--bogus-flag"}, &stdout, &stderr)
+	// runScan will fail at CurrentEnv (env -0 not on PATH) → exit 1 from die()
+	// or fail at flag parse → exit 2. Either non-zero is acceptable; the point is
+	// we hit the fallthrough.
+	if code == 0 {
+		t.Errorf("expected non-zero exit from leading-dash dispatch; got %d", code)
+	}
+}
+
+func TestRunInventory_FlagParseError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runInventory([]string{"--bogus"}, &stdout, &stderr)
+	if code != 2 {
+		t.Errorf("expected 2 for unknown flag; got %d", code)
+	}
+}
+
+func TestRunCatalog_FlagParseError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runCatalog([]string{"--bogus"}, &stdout, &stderr)
+	if code != 2 {
+		t.Errorf("expected 2 for unknown flag; got %d", code)
+	}
+}
+
+func TestRunDedup_FlagParseError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runDedup([]string{"--bogus"}, &stdout, &stderr)
+	if code != 2 {
+		t.Errorf("expected 2 for unknown flag; got %d", code)
+	}
+}
+
+func TestRunClean_FlagParseError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runClean([]string{"--bogus"}, &stdout, &stderr)
+	if code != 2 {
+		t.Errorf("expected 2 for unknown flag; got %d", code)
 	}
 }
 

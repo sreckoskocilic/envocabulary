@@ -2,9 +2,7 @@ package capture
 
 import (
 	"bytes"
-	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -12,40 +10,10 @@ import (
 	"github.com/sreckoskocilic/envocabulary/internal/model"
 )
 
-func CurrentEnv() (map[string]string, error) {
-	out, err := exec.Command("env", "-0").Output()
-	if err != nil {
-		return nil, fmt.Errorf("env -0: %w", err)
-	}
-	return parseNullSeparated(out), nil
-}
-
 // Tracer abstracts the source of raw zsh xtrace output so that the trace-parsing
 // pipeline can be tested with synthetic input instead of spawning a real zsh process.
 type Tracer interface {
 	RawTrace() (string, error)
-}
-
-// ZshTracer is the production Tracer that spawns `zsh -l -i -x -c exit` and
-// captures its stderr (which contains the xtrace output).
-type ZshTracer struct{}
-
-func (ZshTracer) RawTrace() (string, error) {
-	cmd := exec.Command("zsh", "-l", "-i", "-x", "-c", "exit")
-	cmd.Env = envWithPS4()
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	out := stderr.String()
-	if err != nil && out == "" {
-		return "", fmt.Errorf("zsh trace: %w", err)
-	}
-	return out, nil
-}
-
-// TracedStartup runs zsh and parses its xtrace output. Production callers use this.
-func TracedStartup() ([]model.TraceEntry, error) {
-	return TracedStartupWith(ZshTracer{})
 }
 
 // TracedStartupWith runs the given Tracer and parses its raw output.

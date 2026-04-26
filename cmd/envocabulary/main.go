@@ -9,13 +9,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sreckoskocilic/envocabulary/internal/attribute"
-	"github.com/sreckoskocilic/envocabulary/internal/capture"
 	"github.com/sreckoskocilic/envocabulary/internal/catalog"
 	"github.com/sreckoskocilic/envocabulary/internal/cleaner"
 	"github.com/sreckoskocilic/envocabulary/internal/color"
 	"github.com/sreckoskocilic/envocabulary/internal/dedup"
-	"github.com/sreckoskocilic/envocabulary/internal/explain"
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
 	"github.com/sreckoskocilic/envocabulary/internal/model"
 )
@@ -234,75 +231,6 @@ func helpClean(w io.Writer) {
 	fmt.Fprintln(w, "  envocabulary clean ~/.bashrc                           # bash works the same")
 	fmt.Fprintln(w, "  envocabulary clean --full ~/.zshrc > ~/.zshrc.cleaned  # save cleaned copy")
 	fmt.Fprintln(w, "  diff ~/.zshrc ~/.zshrc.cleaned                         # review before replacing")
-}
-
-func runScan(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("scan", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	fs.Usage = func() { helpScan(stdout) }
-	jsonOut := fs.Bool("json", false, "emit JSON instead of grouped text")
-	showValues := fs.Bool("values", false, "include values in output (may expose secrets)")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-
-	current, err := capture.CurrentEnv()
-	if err != nil {
-		return die(stderr, err)
-	}
-
-	trace, err := capture.TracedStartup()
-	if err != nil {
-		fmt.Fprintf(stderr, "warning: trace unavailable, falling back to classification-only: %v\n", err)
-		trace = nil
-	}
-
-	words := attribute.Attribute(current, trace)
-
-	if *jsonOut {
-		return emitScanJSON(stdout, stderr, words, *showValues)
-	}
-	emitScanText(stdout, words, *showValues)
-	return 0
-}
-
-func runExplain(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("explain", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	fs.Usage = func() { helpExplain(stdout) }
-	jsonOut := fs.Bool("json", false, "emit JSON")
-	showValues := fs.Bool("values", false, "include value and raw traced commands (may expose secrets)")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-
-	if fs.NArg() < 1 {
-		helpExplain(stderr)
-		return 2
-	}
-	name := fs.Arg(0)
-
-	current, err := capture.CurrentEnv()
-	if err != nil {
-		return die(stderr, err)
-	}
-
-	trace, err := capture.TracedStartup()
-	if err != nil {
-		fmt.Fprintf(stderr, "warning: trace unavailable: %v\n", err)
-		trace = nil
-	}
-
-	result := explain.Explain(name, current, trace)
-
-	if *jsonOut {
-		if err := explain.EmitJSON(stdout, result, *showValues); err != nil {
-			return die(stderr, err)
-		}
-		return 0
-	}
-	explain.EmitText(stdout, result, *showValues)
-	return 0
 }
 
 func runCatalog(args []string, stdout, stderr io.Writer) int {

@@ -127,6 +127,27 @@ func TestEmitText_ShowValues(t *testing.T) {
 	}
 }
 
+func TestEmitText_NotPresentButHasWriters(t *testing.T) {
+	r := Result{
+		Name:    "GHOST",
+		Present: false,
+		Origin:  model.OriginShellFile,
+		Writers: []model.TraceEntry{
+			{File: "/u/.zshrc", Line: 5, Raw: "export GHOST=here"},
+			{File: "/u/.zshrc", Line: 99, Raw: "unset GHOST"},
+		},
+	}
+	var buf bytes.Buffer
+	EmitText(&buf, r, false)
+	out := buf.String()
+	if !strings.Contains(out, "not in current environment") {
+		t.Errorf("expected not-in-env line; got:\n%s", out)
+	}
+	if !strings.Contains(out, "seen 2 writer(s)") {
+		t.Errorf("expected writer-count notice for not-present-with-writers case; got:\n%s", out)
+	}
+}
+
 func TestEmitText_NotPresent(t *testing.T) {
 	var buf bytes.Buffer
 	EmitText(&buf, Result{Name: "GONE"}, false)
