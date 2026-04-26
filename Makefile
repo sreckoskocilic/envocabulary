@@ -4,7 +4,7 @@ GO              ?= go
 GOLANGCI_LINT   ?= golangci-lint
 GOFUMPT         ?= gofumpt
 COVERAGE_FILE   ?= coverage.out
-COVERAGE_MIN    ?= 90
+COVERAGE_MIN    ?= 95
 BINARY          ?= envocabulary
 PKGS            ?= ./...
 
@@ -16,21 +16,27 @@ build:  ## Build the binary
 test:  ## Run tests
 	$(GO) test -race $(PKGS)
 
-cover:  ## Run tests with coverage, print summary
-	$(GO) test -race -covermode=atomic -coverprofile=$(COVERAGE_FILE) $(PKGS)
-	@$(GO) tool cover -func=$(COVERAGE_FILE) | tail -1
-	@total=$$($(GO) tool cover -func=$(COVERAGE_FILE) | awk '/total:/ {gsub(/%/,"",$$3); print int($$3)}'); \
-		if [ "$$total" -lt "$(COVERAGE_MIN)" ]; then \
-			echo ""; \
-			echo "✗ coverage $$total% is below minimum $(COVERAGE_MIN)%"; \
-			exit 1; \
+cover:  ## Run tests with coverage; gate on testable surface (excludes *_external.go)
+	@$(GO) test -race -covermode=atomic -coverprofile=$(COVERAGE_FILE) $(PKGS) > /dev/null
+	@grep -v '/external\.go:\|_external\.go:' $(COVERAGE_FILE) > $(COVERAGE_FILE).gated
+	@full=$$($(GO) tool cover -func=$(COVERAGE_FILE) | awk '/total:/ {gsub(/%/,"",$$3); print $$3}'); \
+		gated=$$($(GO) tool cover -func=$(COVERAGE_FILE).gated | awk '/total:/ {gsub(/%/,"",$$3); print $$3}'); \
+		echo "Coverage:"; \
+		echo "  full   (engineering truth, includes *_external.go):  $$full%"; \
+		echo "  gated  (testable surface, matches codecov badge):    $$gated%"; \
+		echo ""; \
+		if awk -v g=$$gated -v m=$(COVERAGE_MIN) 'BEGIN { exit (g+0 < m+0) ? 1 : 0 }'; then \
+			echo "✓ gated coverage $$gated% meets minimum $(COVERAGE_MIN)%"; \
 		else \
-			echo "✓ coverage $$total% meets minimum $(COVERAGE_MIN)%"; \
+			echo "✗ gated coverage $$gated% is below minimum $(COVERAGE_MIN)%"; \
+			rm -f $(COVERAGE_FILE).gated; \
+			exit 1; \
 		fi
+	@rm -f $(COVERAGE_FILE).gated
 
-cover-html: cover  ## Generate HTML coverage report and open it
-	$(GO) tool cover -html=$(COVERAGE_FILE) -o coverage.html
-	@echo "open coverage.html"
+cover-html: cover  ## Generate HTML coverage report (full picture, includes *_external.go)
+	@$(GO) tool cover -html=$(COVERAGE_FILE) -o coverage.html
+	@echo "Open coverage.html in your browser to inspect line-by-line coverage."
 
 lint:  ## Run golangci-lint
 	$(GOLANGCI_LINT) run $(PKGS)
