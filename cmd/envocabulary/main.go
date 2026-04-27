@@ -12,6 +12,7 @@ import (
 	"github.com/sreckoskocilic/envocabulary/internal/catalog"
 	"github.com/sreckoskocilic/envocabulary/internal/cleaner"
 	"github.com/sreckoskocilic/envocabulary/internal/color"
+	"github.com/sreckoskocilic/envocabulary/internal/dangling"
 	"github.com/sreckoskocilic/envocabulary/internal/dedup"
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
 	"github.com/sreckoskocilic/envocabulary/internal/model"
@@ -51,6 +52,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 				return runCatalog(args[1:], stdout, stderr)
 			case "dedup":
 				return runDedup(args[1:], stdout, stderr)
+			case "dangling":
+				return runDangling(args[1:], stdout, stderr)
 			default:
 				fmt.Fprintf(stderr, "unknown command: %s\n\n", args[0])
 				usage(stderr)
@@ -83,6 +86,10 @@ func usage(w io.Writer) {
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "  dedup [--orphans] [--bash]")
 	fmt.Fprintln(w, "      Cross-file duplicate report for exports/assigns/aliases/functions.")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "  dangling [--orphans] [--bash]")
+	fmt.Fprintln(w, "      List `source` lines and path-like exports/assigns whose target")
+	fmt.Fprintln(w, "      no longer exists on disk.")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "  clean FILE")
 	fmt.Fprintln(w, "      Strip default/template comments from FILE to stdout (never mutates).")
@@ -188,6 +195,34 @@ func helpCatalog(w io.Writer) {
 	fmt.Fprintln(w, "  envocabulary catalog --bash --orphans")
 	fmt.Fprintln(w, "  envocabulary catalog --dedup                       # red highlight on dead lines")
 	fmt.Fprintln(w, "  envocabulary catalog --dedup --color=never | grep '# \\[overridden'")
+}
+
+func helpDangling(w io.Writer) {
+	fmt.Fprintln(w, "envocabulary dangling — list config references whose target no longer exists")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "Usage:")
+	fmt.Fprintln(w, "  envocabulary dangling [--orphans] [--bash]")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "Description:")
+	fmt.Fprintln(w, "  Walks parsed shell config files and reports two classes of dangling reference:")
+	fmt.Fprintln(w, "    - `source ~/foo` where the target file is missing")
+	fmt.Fprintln(w, "    - `export FOO=/path` (or bare `FOO=/path`) where the literal path-like")
+	fmt.Fprintln(w, "      value (starts with `/` or `~`) does not exist on disk")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "  Values containing `$` (variable expansion) or `:` (PATH-like) are skipped —")
+	fmt.Fprintln(w, "  they cannot be resolved statically. Aliases and functions are out of scope.")
+	fmt.Fprintln(w, "  Colon-accumulated vars (PATH, MANPATH, FPATH, INFOPATH, CDPATH, DYLD_*) are")
+	fmt.Fprintln(w, "  excluded for the same reason `dedup` excludes them.")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "  Exit code is non-zero when at least one dangling reference is found.")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "Flags:")
+	fmt.Fprintln(w, "  --orphans  include orphan/backup files in the search")
+	fmt.Fprintln(w, "  --bash     include bash config files")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "Examples:")
+	fmt.Fprintln(w, "  envocabulary dangling")
+	fmt.Fprintln(w, "  envocabulary dangling --orphans --bash")
 }
 
 func helpDedup(w io.Writer) {
@@ -348,6 +383,56 @@ func emitDedupText(w io.Writer, groups []dedup.Group) {
 		for _, l := range g.Losers {
 			fmt.Fprintf(w, "    loser   %s:%d\n", l.File, l.Line)
 		}
+	}
+}
+
+func runDangling(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("dangling", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() { helpDangling(stdout) }
+	orphans := fs.Bool("orphans", false, "include orphan/backup files")
+	bash := fs.Bool("bash", false, "include bash config files")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	files := inventory.Discover()
+	keep := make([]inventory.File, 0, len(files))
+	for _, f := range files {
+		switch f.Role {
+		case inventory.RoleCanonicalZsh:
+			keep = append(keep, f)
+		case inventory.RoleCanonicalBash:
+			if *bash {
+				keep = append(keep, f)
+			}
+		case inventory.RoleOrphan:
+			if *orphans {
+				keep = append(keep, f)
+			}
+		}
+	}
+
+	findings := dangling.Find(keep)
+	if len(findings) == 0 {
+		fmt.Fprintln(stdout, "no dangling references found")
+		return 0
+	}
+	emitDanglingText(stdout, findings)
+	return 1
+}
+
+func emitDanglingText(w io.Writer, findings []dangling.Finding) {
+	currentFile := ""
+	for _, f := range findings {
+		if f.File != currentFile {
+			if currentFile != "" {
+				fmt.Fprintln(w)
+			}
+			fmt.Fprintf(w, "## %s\n", f.File)
+			currentFile = f.File
+		}
+		fmt.Fprintf(w, "  %s:%d  %s %s  → %s  (%s)\n", f.File, f.Line, f.Kind, f.Name, f.Value, f.Reason)
 	}
 }
 

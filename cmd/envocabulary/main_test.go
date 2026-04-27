@@ -608,3 +608,83 @@ func TestRun_DispatchToCatalog(t *testing.T) {
 		t.Errorf("expected catalog output; got:\n%s", stdout.String())
 	}
 }
+
+func TestRunDangling_NoneFound(t *testing.T) {
+	dir := t.TempDir()
+	realPath := filepath.Join(dir, "real.sh")
+	if err := os.WriteFile(realPath, []byte(""), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	setupFakeShellHome(t, map[string]string{
+		".zshrc": "source " + realPath + "\nexport EDITOR=vim\n",
+	})
+	var stdout, stderr bytes.Buffer
+	code := runDangling(nil, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("got exit %d, want 0", code)
+	}
+	if !strings.Contains(stdout.String(), "no dangling references found") {
+		t.Errorf("expected empty-state notice; got:\n%s", stdout.String())
+	}
+}
+
+func TestRunDangling_FindsDangling(t *testing.T) {
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "ghost.sh")
+	setupFakeShellHome(t, map[string]string{
+		".zshrc": "source " + missing + "\nexport JAVA_HOME=" + missing + "\n",
+	})
+	var stdout, stderr bytes.Buffer
+	code := runDangling(nil, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("got exit %d, want 1 (dangling found)", code)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "source target missing") {
+		t.Errorf("expected source-missing reason; got:\n%s", out)
+	}
+	if !strings.Contains(out, "path does not exist") {
+		t.Errorf("expected path-missing reason; got:\n%s", out)
+	}
+	if !strings.Contains(out, "JAVA_HOME") {
+		t.Errorf("expected JAVA_HOME in output; got:\n%s", out)
+	}
+}
+
+func TestRunDangling_BashAndOrphansFlags(t *testing.T) {
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "gone")
+	setupFakeShellHome(t, map[string]string{
+		".bashrc":       "export FROM_BASH=" + missing + "\n",
+		".zshrc.backup": "export FROM_ORPHAN=" + missing + "\n",
+	})
+	var stdout, stderr bytes.Buffer
+	code := runDangling([]string{"--bash", "--orphans"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("got exit %d, want 1", code)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "FROM_BASH") || !strings.Contains(out, "FROM_ORPHAN") {
+		t.Errorf("expected both bash and orphan findings; got:\n%s", out)
+	}
+}
+
+func TestRunDangling_FlagParseError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runDangling([]string{"--bogus"}, &stdout, &stderr)
+	if code != 2 {
+		t.Errorf("expected 2 for unknown flag; got %d", code)
+	}
+}
+
+func TestRun_DispatchToDangling(t *testing.T) {
+	setupFakeShellHome(t, map[string]string{".zshrc": "export X=1\n"})
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"dangling"}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("expected 0; got %d", code)
+	}
+	if !strings.Contains(stdout.String(), "no dangling references") {
+		t.Errorf("expected dangling empty-state output; got:\n%s", stdout.String())
+	}
+}

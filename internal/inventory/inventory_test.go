@@ -15,7 +15,7 @@ func TestParseReader(t *testing.T) {
 		{
 			"export with value",
 			`export FOO=bar`,
-			[]Item{{Kind: KindExport, Name: "FOO", Line: 1}},
+			[]Item{{Kind: KindExport, Name: "FOO", Line: 1, Value: "bar"}},
 		},
 		{
 			"export without value",
@@ -23,9 +23,24 @@ func TestParseReader(t *testing.T) {
 			[]Item{{Kind: KindExport, Name: "FOO", Line: 1}},
 		},
 		{
+			"export with double-quoted value",
+			`export FOO="hello world"`,
+			[]Item{{Kind: KindExport, Name: "FOO", Line: 1, Value: "hello world"}},
+		},
+		{
+			"export with single-quoted value",
+			`export FOO='/usr/local/bin'`,
+			[]Item{{Kind: KindExport, Name: "FOO", Line: 1, Value: "/usr/local/bin"}},
+		},
+		{
+			"export with trailing inline comment stripped",
+			`export FOO=/path # trailing`,
+			[]Item{{Kind: KindExport, Name: "FOO", Line: 1, Value: "/path"}},
+		},
+		{
 			"bare assignment",
 			`ZSH_THEME="robbyrussell"`,
-			[]Item{{Kind: KindAssign, Name: "ZSH_THEME", Line: 1}},
+			[]Item{{Kind: KindAssign, Name: "ZSH_THEME", Line: 1, Value: "robbyrussell"}},
 		},
 		{
 			"alias simple",
@@ -87,7 +102,7 @@ func TestParseReader(t *testing.T) {
 				`mkcd() { :; }`,
 			}, "\n"),
 			[]Item{
-				{Kind: KindExport, Name: "A", Line: 2},
+				{Kind: KindExport, Name: "A", Line: 2, Value: "1"},
 				{Kind: KindAlias, Name: "ll", Line: 4},
 				{Kind: KindFunction, Name: "mkcd", Line: 5},
 			},
@@ -95,7 +110,7 @@ func TestParseReader(t *testing.T) {
 		{
 			"indented entries still captured",
 			"    export FOO=bar",
-			[]Item{{Kind: KindExport, Name: "FOO", Line: 1}},
+			[]Item{{Kind: KindExport, Name: "FOO", Line: 1, Value: "bar"}},
 		},
 	}
 	for _, tc := range tests {
