@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sreckoskocilic/envocabulary/internal/color"
 	"github.com/sreckoskocilic/envocabulary/internal/dedup"
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
 )
@@ -19,7 +18,6 @@ type Options struct {
 	IncludeBash    bool
 	LineNumbers    bool
 	Dedup          bool
-	Color          color.Mode
 }
 
 var zshLoginOrder = map[string]int{
@@ -117,26 +115,21 @@ func writeFile(w io.Writer, f inventory.File, opts Options, losers map[string]de
 	fmt.Fprintf(w, "# %s%s\n", f.Path, suffix)
 	fmt.Fprintf(w, "# %s\n", bar)
 
-	colorOn := opts.Color.Enabled(w)
-
 	sc := bufio.NewScanner(fh)
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
 	lineNo := 0
 	for sc.Scan() {
 		lineNo++
 		text := sc.Text()
-		overridden := false
 		if opts.Dedup && losers != nil {
 			if winner, ok := losers[dedup.Key(f.Path, lineNo)]; ok {
 				text = fmt.Sprintf("# [overridden by %s:%d] %s", winner.File, winner.Line, text)
-				overridden = true
 			}
 		}
 		if opts.LineNumbers {
-			line := fmt.Sprintf("%5d  %s", lineNo, text)
-			fmt.Fprintln(w, color.Wrap(line, color.LightRed, overridden && colorOn))
+			fmt.Fprintf(w, "%5d  %s\n", lineNo, text)
 		} else {
-			fmt.Fprintln(w, color.Wrap(text, color.LightRed, overridden && colorOn))
+			fmt.Fprintln(w, text)
 		}
 	}
 	return sc.Err()

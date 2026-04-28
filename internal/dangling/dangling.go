@@ -1,17 +1,9 @@
 // Package dangling reports config items that point to filesystem targets which
-// no longer exist: `source` lines whose target file is missing, and exports /
-// assignments whose path-like literal value points nowhere.
+// no longer exist: `source` lines and path-like exports/assignments (literal
+// values starting with `/` or `~`) whose target is gone.
 //
-// Scope is deliberately narrow (see CLAUDE.md):
-//   - Only `source` and path-like exports/assignments are checked.
-//   - Path-like means the literal value starts with `/` or `~`. Values that
-//     contain `$` (variable expansion) or `:` (PATH-like accumulators) are
-//     skipped — we can't reliably evaluate them statically.
-//   - Colon-accumulating vars (PATH, MANPATH, FPATH, INFOPATH, CDPATH, DYLD_*)
-//     are excluded the same way `dedup` excludes them: last-writer reasoning
-//     does not apply.
-//   - Aliases are out of scope for v1 (would need PATH resolution and alias
-//     target parsing).
+// Skipped: values with `$` or `:` (can't resolve statically), colon-accumulating
+// vars (PATH, MANPATH, ...), aliases, and functions.
 package dangling
 
 import (

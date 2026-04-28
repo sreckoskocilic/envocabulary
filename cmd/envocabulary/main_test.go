@@ -363,21 +363,12 @@ func TestRunCatalog_DedupAnnotation(t *testing.T) {
 		".zshrc":    "export FOO=second\n",
 	})
 	var stdout, stderr bytes.Buffer
-	code := runCatalog([]string{"--dedup", "--color=never"}, &stdout, &stderr)
+	code := runCatalog([]string{"--dedup"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("got %d", code)
 	}
 	if !strings.Contains(stdout.String(), "# [overridden by") {
 		t.Errorf("expected dedup annotation; got:\n%s", stdout.String())
-	}
-}
-
-func TestRunCatalog_BadColor(t *testing.T) {
-	setupFakeShellHome(t, map[string]string{".zshrc": ""})
-	var stdout, stderr bytes.Buffer
-	code := runCatalog([]string{"--color=rainbow"}, &stdout, &stderr)
-	if code != 2 {
-		t.Errorf("expected 2 for bad color; got %d", code)
 	}
 }
 
@@ -437,7 +428,7 @@ func TestRunClean_DryRunDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
-	code := runClean([]string{"--color=never", path}, &stdout, &stderr)
+	code := runClean([]string{path}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("got %d", code)
 	}
@@ -477,17 +468,6 @@ func TestRunClean_NoFile(t *testing.T) {
 	code := runClean(nil, &stdout, &stderr)
 	if code != 2 {
 		t.Errorf("expected 2 for missing FILE arg; got %d", code)
-	}
-}
-
-func TestRunClean_BadColor(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config")
-	_ = os.WriteFile(path, []byte("export X=1\n"), 0o600)
-	var stdout, stderr bytes.Buffer
-	code := runClean([]string{"--color=rainbow", path}, &stdout, &stderr)
-	if code != 2 {
-		t.Errorf("expected 2 for bad color; got %d", code)
 	}
 }
 
@@ -543,7 +523,7 @@ func TestRun_DispatchToClean(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"clean", "--color=never", path}, &stdout, &stderr)
+	code := run([]string{"clean", path}, &stdout, &stderr)
 	if code != 0 {
 		t.Errorf("expected 0; got %d", code)
 	}

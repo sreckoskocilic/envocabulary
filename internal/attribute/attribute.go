@@ -18,7 +18,7 @@ func Attribute(current map[string]string, trace []model.TraceEntry) []model.EnWo
 		switch {
 		case model.IsDeferredListVar(name):
 			w.Origin = model.OriginDeferred
-			w.Source = "multi-source; `envocabulary path` (TODO)"
+			w.Source = "multi-source; envocabulary path (TODO)"
 
 		case model.IsDirenvVar(name):
 			w.Origin = model.OriginDirenv

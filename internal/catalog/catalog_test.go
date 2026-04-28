@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sreckoskocilic/envocabulary/internal/color"
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
 )
 
@@ -162,40 +161,12 @@ func TestWrite_DedupAnnotation(t *testing.T) {
 	t.Setenv("ZDOTDIR", dir)
 
 	var buf bytes.Buffer
-	if err := Write(&buf, Options{Dedup: true, Color: color.Never}); err != nil {
+	if err := Write(&buf, Options{Dedup: true}); err != nil {
 		t.Fatal(err)
 	}
 	out := buf.String()
 	if !strings.Contains(out, "# [overridden by") {
 		t.Errorf("expected override annotation; got:\n%s", out)
-	}
-	if !strings.Contains(out, "\x1b[") {
-		// no color escape — good (color.Never)
-	} else {
-		t.Errorf("expected no color escapes with color.Never; got:\n%s", out)
-	}
-}
-
-func TestWrite_DedupColorAlways(t *testing.T) {
-	dir := t.TempDir()
-	zprof := filepath.Join(dir, ".zprofile")
-	zshrc := filepath.Join(dir, ".zshrc")
-	if err := os.WriteFile(zprof, []byte("export FOO=first\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(zshrc, []byte("export FOO=second\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("HOME", dir)
-	t.Setenv("ZDOTDIR", dir)
-
-	var buf bytes.Buffer
-	if err := Write(&buf, Options{Dedup: true, Color: color.Always}); err != nil {
-		t.Fatal(err)
-	}
-	out := buf.String()
-	if !strings.Contains(out, "\x1b[91m") || !strings.Contains(out, "\x1b[0m") {
-		t.Errorf("expected ANSI color escapes with color.Always; got:\n%s", out)
 	}
 }
 

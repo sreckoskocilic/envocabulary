@@ -4,116 +4,71 @@
 [![codecov](https://codecov.io/gh/sreckoskocilic/envocabulary/branch/main/graph/badge.svg)](https://codecov.io/gh/sreckoskocilic/envocabulary)
 [![Go Report Card](https://goreportcard.com/badge/github.com/sreckoskocilic/envocabulary)](https://goreportcard.com/report/github.com/sreckoskocilic/envocabulary)
 [![Release](https://img.shields.io/github/v/release/sreckoskocilic/envocabulary)](https://github.com/sreckoskocilic/envocabulary/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20FreeBSD-lightgrey)](#install)
 
-Forensics and audit toolkit for shell environments. Two layers, one CLI:
+For every variable in your current shell, find the file and line that set it — or which subsystem (direnv, launchd, terminal, SSH, system) injected it. Plus a few static-file commands for the moment your shell config has sprawled across N files and backups and you've lost the plot.
 
-- **Live env** — for every variable in your current shell, find out where it came from: a specific `file:line`, direnv, launchd, terminal app, SSH, or system.
-- **Static config** — inventory, catalog, dedup, and clean your sprawling shell config files without running them.
+I built this because I kept losing the same hour every few months tracing why some `JAVA_HOME` or `PATH` was pointing somewhere I didn't expect. `which` knows commands, `direnv status` knows direnv, `launchctl getenv` knows launchd — none of them tell you that `~/.zshrc:42` is the actual writer.
 
-Read-only. It will never `unset`, `rm`, or edit your shell config. Designed for the moment you ask *"why on earth is `ENV_VAR` set to that?"* and your shell config sprawls across five files.
+Works with zsh and bash on macOS, Linux, and FreeBSD.
 
-> **Shell support.** All commands work with both **zsh** and **bash** — the tracer is auto-detected from `$SHELL` and can be overridden with `--shell zsh|bash` on `scan`/`explain`. Static-file commands (`inventory`, `catalog`, `dedup`, `clean`) parse files for both shells too. fish, nu, csh/tcsh, and PowerShell are not supported. Platforms: macOS, Linux, FreeBSD (amd64, arm64, plus 386/armv7 for Linux).
+## The "ah" moment
+
+    $ envocabulary explain JAVA_HOME
+    JAVA_HOME
+        origin:  shell-file
+        winner:  ~/.zshrc:42
+        also written at:  ~/.zshenv:8
+
+`grep -r JAVA_HOME ~` shows both files but can't tell you which one actually won at startup. envocabulary runs your shell with xtrace and reads the trace.
 
 ## Install
 
-### One-liner (recommended)
-
-Detects your OS and architecture, downloads the matching release binary, places it on your `$PATH`. On macOS it also clears the Gatekeeper quarantine so the first run works.
+One-liner (detects OS/arch, drops the binary on your `$PATH`, clears Gatekeeper on macOS):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/sreckoskocilic/envocabulary/main/install.sh | sh
 ```
 
-Pin a specific version or change the install directory:
+Or `go install github.com/sreckoskocilic/envocabulary/cmd/envocabulary@latest`. Pre-built binaries and Linux packages (`.deb` / `.rpm` / `.apk` / `.pkg.tar.zst`) are on the [releases page](https://github.com/sreckoskocilic/envocabulary/releases/latest).
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/sreckoskocilic/envocabulary/main/install.sh \
-    | sh -s -- --version v0.1.0 --bin-dir /usr/local/bin
-```
+## Commands
 
-### Native Linux packages
+Live env (introspects your running shell):
 
-For each release we publish `.deb`, `.rpm`, `.apk`, and `.pkg.tar.zst` files alongside the tarballs. Download the right one from the [latest release](https://github.com/sreckoskocilic/envocabulary/releases/latest) page and:
+- `scan` *(default)* — every variable grouped by origin
+- `explain NAME` — full attribution for one variable
 
-```sh
-# Debian, Ubuntu, Mint
-sudo dpkg -i envocabulary_*_amd64.deb
+Static files (parses config without running it):
 
-# Fedora, RHEL, openSUSE
-sudo rpm -i envocabulary_*_amd64.rpm
+- `inventory` — what each config file defines (exports, aliases, functions, sources)
+- `catalog` — concatenates configs in startup order; `--dedup` flags overridden lines
+- `dedup` — cross-file duplicate report
+- `dangling` — `source` targets and path-like exports whose file no longer exists
+- `clean FILE` — strips boilerplate comments to stdout, never mutates the file
 
-# Alpine
-sudo apk add --allow-untrusted envocabulary_*_amd64.apk
+`envocabulary <cmd> -h` for flags. `--shell zsh|bash` overrides auto-detection from `$SHELL` (handy when `$SHELL` is stale inside tmux/SSH/sudo).
 
-# Arch, Manjaro
-sudo pacman -U envocabulary_*_amd64.pkg.tar.zst
-```
+## Another example: finding broken references
 
-### Manual download
+`dangling` walks your config and reports `source` lines and path-like exports whose target is gone — the `JAVA_HOME=/opt/jdk-i-uninstalled` and `source ~/dotfiles/work-old.zsh` kind of leftovers:
 
-Pre-built binaries for darwin/linux/freebsd × amd64/arm64 (plus linux 386/armv7) are on the [releases page](https://github.com/sreckoskocilic/envocabulary/releases/latest). Pick the right tarball, extract, place the binary on your `$PATH`.
+    $ envocabulary dangling
+    ## ~/.zshrc
+      ~/.zshrc:14  source   → ~/dotfiles/work-old.zsh  (source target missing)
+      ~/.zshrc:42  export JAVA_HOME  → /opt/jdk-11  (path does not exist)
 
-### From source (Go 1.22+)
-
-```sh
-go install github.com/sreckoskocilic/envocabulary/cmd/envocabulary@latest
-```
-
-Make sure `$(go env GOBIN)` (or `$(go env GOPATH)/bin`) is on your `$PATH`.
-
-## Usage
-
-For the full flag-by-flag reference, arguments, and example invocations per subcommand, run:
-
-- `envocabulary help` — directory of all subcommands
-- `envocabulary <command> -h` — detailed help for one subcommand (e.g. `envocabulary catalog -h`)
-- `envocabulary --version` — version and build info
-
-### Subcommands at a glance
-
-**Live env (introspect the running shell — zsh and bash supported):**
-
-- **`scan`** *(default)* — one-shot view of every variable in your current shell, grouped by where it came from (shell-file with `file:line`, direnv, launchd, terminal, ssh, system, unknown). Reach for this when something feels wrong about your env and you don't yet know *which* variable is the problem.
-
-- **`explain NAME`** — full attribution for a single variable: every writer in startup order, the winner marked. Reach for this when you already know the misbehaving variable and need to spot which file:line ultimately won — the typical "I set this in two places and forgot" finding.
-
-Both commands auto-detect your shell from `$SHELL` and dispatch to the right tracer. Force a specific shell with `--shell zsh` or `--shell bash` (useful when `$SHELL` is stale inside tmux/SSH/sudo).
-
-**Static config (audit shell config files without running them — zsh + bash):**
-
-- **`inventory`** — counts and names per file (exports, assigns, aliases, functions, sources). Reach for this before any cleanup, to refresh your mental model of what each of your `~/.zshrc`/`~/.bashrc`/orphan files actually defines.
-
-- **`catalog`** — concatenates all canonical config files in startup order to stdout. Reach for this when you want to read your config in execution order without opening five files in five tabs. With `--dedup`, it inline-annotates which lines are dead because something later overrides them (highlighted in red on a terminal).
-
-- **`dedup`** — focused list of duplicate exports/aliases/functions across files, with the winning writer marked. Reach for this when you suspect conflicting writers and want only the conflicts, not the surrounding code.
-
-- **`clean FILE`** — strip default/template comments (oh-my-zsh boilerplate, commented-out examples). Default mode is a **dry-run preview** that shows which lines *would* be stripped. Pass `--full` to emit the cleaned content to stdout for you to redirect into a new file. Read-only — never mutates the input.
-
-## Origin taxonomy
-
-| Origin              | Meaning                                                                                      |
-| ------------------- | -------------------------------------------------------------------------------------------- |
-| `shell-file`        | A literal assignment was traced to a specific file and line in your shell startup.           |
-| `direnv`            | A `DIRENV_*` variable.                                                                       |
-| `launchd`           | Confirmed by `launchctl getenv NAME` (typically set via `launchctl setenv` in a plist).      |
-| `terminal`          | Terminal app injection (iTerm, Apple Terminal, etc.).                                        |
-| `ssh`               | SSH session variables (`SSH_AUTH_SOCK`, `SSH_TTY`, ...).                                     |
-| `system`            | System basics (`HOME`, `USER`, `PWD`, ...), locale (`LANG`, `LC_*`), shell internals.        |
-| `deferred-list-var` | Colon-accumulated vars (`PATH`, `MANPATH`, `DYLD_*`). Last-writer attribution lies here — a future `envocabulary path` subcommand will split these per entry. |
-| `unknown`           | None of the above. Usually parent-process injection or a name the classifier doesn't know.   |
+Exits non-zero when there are findings, so it composes in shell pipelines.
 
 ## Limits
 
-- Attribution is shallow. If a config file sources a helper that sets a variable, you'll see the helper's `file:line` — not the chain that led there.
-- `export A=1 B=2` on one line is recorded as `A` only.
-- If startup tracing fails on your machine, the scan warns and falls back to classify-only attribution.
-- Some variables land in `unknown` — typically parent-process injection (a tool that `exec`s your CLI with extra env).
+- **Attribution is last-writer only.** If `.zshrc` sources a helper that exports the variable, you see the helper's `file:line`, not the chain that led there.
+- **Colon-accumulated vars are not attributed.** `PATH`, `MANPATH`, `FPATH`, `DYLD_*` get tagged `deferred-list-var` and skipped — last-writer would lie because these append rather than override. A dedicated subcommand for per-entry attribution is planned.
+- **One assignment per line.** `export A=1 B=2` records `A` only.
+- **`dangling` only flags literal paths.** Values containing `$` (variable expansion) or `:` (PATH-like) are skipped — we can't resolve those statically without lying.
+- **Unsupported shells:** fish, nu, csh/tcsh, PowerShell.
 
-Bug reports for breakage on a new zsh or bash release: open a [GitHub issue](https://github.com/sreckoskocilic/envocabulary/issues) with the output of `zsh --version` or `bash --version` and a snippet of the broken output.
+If startup tracing fails on a given machine, `scan` falls back to classify-only and prints a warning. Bug reports welcome — include `zsh --version` / `bash --version` and the broken output.
 
-## Scope
+## Read-only by design
 
-envocabulary is intentionally read-only. It will never `unset`, `rm`, or edit your shell config. An emergency tool must not be the thing that makes the emergency worse. If you want to clean things up, copy the `file:line` pointers and do the edits yourself.
-
-This applies to subcommands that look like mutations too: `clean` outputs to stdout only and never touches the input file. You do the redirect and the replace.
+envocabulary will never `unset`, `rm`, or edit your shell config. An emergency tool shouldn't be the thing that makes the emergency worse. If you want to clean things up, copy the `file:line` pointers and do the edits yourself. `clean` outputs to stdout; you do the redirect.

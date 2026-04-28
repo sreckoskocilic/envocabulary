@@ -32,7 +32,7 @@ var dedupKinds = map[inventory.Kind]bool{
 }
 
 // Colon-accumulated variables: multiple export lines extend them rather than
-// overwrite. Flagging them as duplicates lies (see CLAUDE.md "deferred-list-var").
+// overwrite. Flagging them as duplicates would be misleading.
 func isDeferredListVar(name string) bool {
 	switch name {
 	case "PATH", "MANPATH", "FPATH", "INFOPATH", "CDPATH":

@@ -11,7 +11,6 @@ import (
 
 	"github.com/sreckoskocilic/envocabulary/internal/catalog"
 	"github.com/sreckoskocilic/envocabulary/internal/cleaner"
-	"github.com/sreckoskocilic/envocabulary/internal/color"
 	"github.com/sreckoskocilic/envocabulary/internal/dangling"
 	"github.com/sreckoskocilic/envocabulary/internal/dedup"
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
@@ -65,216 +64,201 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprintln(w, "envocabulary — shell env-var forensics & static config audit (read-only)")
-	fmt.Fprintln(w, "Supported shells: zsh (live-env + static-file), bash (static-file).")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Live-env commands (introspect the running shell):")
-	fmt.Fprintln(w, "  scan [--json] [--values]")
-	fmt.Fprintln(w, "      Group every variable in the current env by origin (shell-file,")
-	fmt.Fprintln(w, "      direnv, launchd, terminal, ssh, system, ...). Default command.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "  explain [--json] [--values] NAME")
-	fmt.Fprintln(w, "      Show full attribution for one variable: origin, primary writer,")
-	fmt.Fprintln(w, "      and every other writer in startup order.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Static-file commands (audit shell config without running it):")
-	fmt.Fprintln(w, "  inventory")
-	fmt.Fprintln(w, "      List counts and names per shell config file.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "  catalog [--orphans] [--bash] [-n] [--dedup]")
-	fmt.Fprintln(w, "      Concatenate all canonical zsh config files in startup order to stdout.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "  dedup [--orphans] [--bash]")
-	fmt.Fprintln(w, "      Cross-file duplicate report for exports/assigns/aliases/functions.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "  dangling [--orphans] [--bash]")
-	fmt.Fprintln(w, "      List `source` lines and path-like exports/assigns whose target")
-	fmt.Fprintln(w, "      no longer exists on disk.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "  clean FILE")
-	fmt.Fprintln(w, "      Strip default/template comments from FILE to stdout (never mutates).")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Run with no arguments to default to `scan`.")
-	fmt.Fprintln(w, "Run `envocabulary <command> -h` for command-specific help with flags & examples.")
-	fmt.Fprintln(w, "Run `envocabulary --version` to print the version.")
+	fmt.Fprint(w, `envocabulary — shell env-var forensics & static config audit (read-only)
+
+Live-env (introspects the running shell):
+  scan [--json] [--values]
+      Group every variable in the current env by origin (shell-file,
+      direnv, launchd, terminal, ssh, system, ...). Default command.
+
+  explain [--json] [--values] NAME
+      Show full attribution for one variable: origin, primary writer,
+      and every other writer in startup order.
+
+Static-file (parses config without running it):
+  inventory
+      List counts and names per shell config file.
+
+  catalog [--orphans] [--bash] [-n] [--dedup]
+      Concatenate canonical zsh config files in startup order to stdout.
+
+  dedup [--orphans] [--bash]
+      Cross-file duplicate report for exports/assigns/aliases/functions.
+
+  dangling [--orphans] [--bash]
+      List source lines and path-like exports whose target is gone.
+
+  clean FILE
+      Strip default/template comments from FILE to stdout (never mutates).
+
+Run with no arguments for scan. envocabulary <command> -h for per-command help.
+`)
 }
 
 func helpScan(w io.Writer) {
-	fmt.Fprintln(w, "envocabulary scan — group every variable in the current env by origin")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  envocabulary scan [--json] [--values] [--shell SHELL]")
-	fmt.Fprintln(w, "  envocabulary [--json] [--values]                (scan is the default command)")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Description:")
-	fmt.Fprintln(w, "  For each variable in the current shell env, attribute its origin to one of:")
-	fmt.Fprintln(w, "  shell-file (file:line), direnv, launchd, terminal, ssh, system, deferred-list-var,")
-	fmt.Fprintln(w, "  or unknown. Output is grouped by origin.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "  Tracer is auto-detected from $SHELL (zsh or bash). Use --shell to override")
-	fmt.Fprintln(w, "  when $SHELL is stale (tmux, SSH, sudo) or to inspect a different shell's startup.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Flags:")
-	fmt.Fprintln(w, "  --json          emit JSON instead of grouped text")
-	fmt.Fprintln(w, "  --values        include values in output (may expose secrets)")
-	fmt.Fprintln(w, "  --shell SHELL   force tracer for a specific shell (zsh|bash); default auto-detects")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Examples:")
-	fmt.Fprintln(w, "  envocabulary scan")
-	fmt.Fprintln(w, "  envocabulary scan --shell bash                   # force bash trace even on zsh login")
-	fmt.Fprintln(w, "  envocabulary scan --json | jq '.[] | select(.origin==\"shell-file\")'")
-	fmt.Fprintln(w, "  envocabulary scan --values | grep -i token")
+	fmt.Fprint(w, `envocabulary scan — group every variable in the current env by origin
+
+Usage:
+  envocabulary scan [--json] [--values] [--shell SHELL]
+  envocabulary [--json] [--values]                (scan is the default command)
+
+Origins: shell-file (file:line), direnv, launchd, terminal, ssh, system,
+deferred-list-var, unknown. Tracer auto-detects from $SHELL; use --shell
+to override.
+
+Flags:
+  --json          emit JSON instead of grouped text
+  --values        include values in output (may expose secrets)
+  --shell SHELL   force tracer (zsh|bash); default auto-detects
+
+Examples:
+  envocabulary scan
+  envocabulary scan --shell bash
+  envocabulary scan --json | jq '.[] | select(.origin=="shell-file")'
+  envocabulary scan --values | grep -i token
+`)
 }
 
 func helpExplain(w io.Writer) {
-	fmt.Fprintln(w, "envocabulary explain — show full attribution for one variable")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  envocabulary explain [--json] [--values] [--shell SHELL] NAME")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Description:")
-	fmt.Fprintln(w, "  Lists every writer (file:line) for NAME in startup order, marks the winner")
-	fmt.Fprintln(w, "  (the assignment that set the final value), and reports the origin bucket.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "  Tracer is auto-detected from $SHELL (zsh or bash). Use --shell to override.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Arguments:")
-	fmt.Fprintln(w, "  NAME            the env variable name as it appears in `env` (e.g. JAVA_HOME, EDITOR)")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Flags:")
-	fmt.Fprintln(w, "  --json          emit JSON")
-	fmt.Fprintln(w, "  --values        include value and raw assignment lines (may expose secrets)")
-	fmt.Fprintln(w, "  --shell SHELL   force tracer for a specific shell (zsh|bash); default auto-detects")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Examples:")
-	fmt.Fprintln(w, "  envocabulary explain JAVA_HOME")
-	fmt.Fprintln(w, "  envocabulary explain --values EDITOR")
-	fmt.Fprintln(w, "  envocabulary explain --shell bash PATH            # trace via bash even on zsh login")
-	fmt.Fprintln(w, "  envocabulary explain --json PATH | jq")
+	fmt.Fprint(w, `envocabulary explain — show full attribution for one variable
+
+Usage:
+  envocabulary explain [--json] [--values] [--shell SHELL] NAME
+
+Lists every writer (file:line) for NAME in startup order, marks the winner,
+and reports the origin bucket. Tracer auto-detects from $SHELL; use --shell
+to override.
+
+Arguments:
+  NAME            the env variable name (e.g. JAVA_HOME, EDITOR)
+
+Flags:
+  --json          emit JSON
+  --values        include value and raw assignment lines (may expose secrets)
+  --shell SHELL   force tracer (zsh|bash); default auto-detects
+
+Examples:
+  envocabulary explain JAVA_HOME
+  envocabulary explain --values EDITOR
+  envocabulary explain --shell bash PATH
+  envocabulary explain --json PATH | jq
+`)
 }
 
 func helpInventory(w io.Writer) {
-	fmt.Fprintln(w, "envocabulary inventory — list counts and names per shell config file")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  envocabulary inventory")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Description:")
-	fmt.Fprintln(w, "  Walks your shell config files: canonical zsh (.zshenv, .zprofile, .zshrc,")
-	fmt.Fprintln(w, "  .zlogin, .zlogout in $ZDOTDIR or $HOME), canonical bash (.bashrc, .bash_profile,")
-	fmt.Fprintln(w, "  .profile), and orphan/backup variants. Reports counts and names per file,")
-	fmt.Fprintln(w, "  grouped by kind (exports, assigns, aliases, functions, sources).")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Examples:")
-	fmt.Fprintln(w, "  envocabulary inventory")
-	fmt.Fprintln(w, "  envocabulary inventory | less")
+	fmt.Fprint(w, `envocabulary inventory — list counts and names per shell config file
+
+Usage:
+  envocabulary inventory
+
+Description:
+  Walks your shell config files: canonical zsh (.zshenv, .zprofile, .zshrc,
+  .zlogin, .zlogout in $ZDOTDIR or $HOME), canonical bash (.bashrc, .bash_profile,
+  .profile), and orphan/backup variants. Reports counts and names per file,
+  grouped by kind (exports, assigns, aliases, functions, sources).
+
+Examples:
+  envocabulary inventory
+  envocabulary inventory | less
+`)
 }
 
 func helpCatalog(w io.Writer) {
-	fmt.Fprintln(w, "envocabulary catalog — concatenate shell config files in startup order")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  envocabulary catalog [--orphans] [--bash] [-n] [--dedup] [--color=MODE]")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Description:")
-	fmt.Fprintln(w, "  Emits all canonical zsh config files concatenated to stdout, separated by")
-	fmt.Fprintln(w, "  banner headers, in zsh login order. Reading top-to-bottom mirrors execution.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Flags:")
-	fmt.Fprintln(w, "  --orphans       also include backup/variant files (.zshrc.backup, .bashrc.old, ...)")
-	fmt.Fprintln(w, "  --bash          also include .bashrc / .bash_profile / .profile")
-	fmt.Fprintln(w, "  -n              prefix each line with its source line number")
-	fmt.Fprintln(w, "  --dedup         comment out lines overridden by a later writer,")
-	fmt.Fprintln(w, "                  annotated as `# [overridden by file:line] ...`")
-	fmt.Fprintln(w, "  --color=MODE    color override-annotated lines: auto|always|never (default auto)")
-	fmt.Fprintln(w, "                  auto = color only when stdout is a terminal; honors NO_COLOR")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Examples:")
-	fmt.Fprintln(w, "  envocabulary catalog | less")
-	fmt.Fprintln(w, "  envocabulary catalog -n")
-	fmt.Fprintln(w, "  envocabulary catalog --bash --orphans")
-	fmt.Fprintln(w, "  envocabulary catalog --dedup                       # red highlight on dead lines")
-	fmt.Fprintln(w, "  envocabulary catalog --dedup --color=never | grep '# \\[overridden'")
+	fmt.Fprint(w, `envocabulary catalog — concatenate shell config files in startup order
+
+Usage:
+  envocabulary catalog [--orphans] [--bash] [-n] [--dedup]
+
+Emits canonical zsh config files concatenated to stdout in login order,
+separated by banner headers. Top-to-bottom mirrors execution.
+
+Flags:
+  --orphans       also include backup/variant files (.zshrc.backup, .bashrc.old, ...)
+  --bash          also include .bashrc / .bash_profile / .profile
+  -n              prefix each line with its source line number
+  --dedup         comment out lines overridden by a later writer,
+                  annotated as: # [overridden by file:line] ...
+
+Examples:
+  envocabulary catalog | less
+  envocabulary catalog -n
+  envocabulary catalog --bash --orphans
+  envocabulary catalog --dedup
+  envocabulary catalog --dedup | grep '# \[overridden'
+`)
 }
 
 func helpDangling(w io.Writer) {
-	fmt.Fprintln(w, "envocabulary dangling — list config references whose target no longer exists")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  envocabulary dangling [--orphans] [--bash]")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Description:")
-	fmt.Fprintln(w, "  Walks parsed shell config files and reports two classes of dangling reference:")
-	fmt.Fprintln(w, "    - `source ~/foo` where the target file is missing")
-	fmt.Fprintln(w, "    - `export FOO=/path` (or bare `FOO=/path`) where the literal path-like")
-	fmt.Fprintln(w, "      value (starts with `/` or `~`) does not exist on disk")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "  Values containing `$` (variable expansion) or `:` (PATH-like) are skipped —")
-	fmt.Fprintln(w, "  they cannot be resolved statically. Aliases and functions are out of scope.")
-	fmt.Fprintln(w, "  Colon-accumulated vars (PATH, MANPATH, FPATH, INFOPATH, CDPATH, DYLD_*) are")
-	fmt.Fprintln(w, "  excluded for the same reason `dedup` excludes them.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "  Exit code is non-zero when at least one dangling reference is found.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Flags:")
-	fmt.Fprintln(w, "  --orphans  include orphan/backup files in the search")
-	fmt.Fprintln(w, "  --bash     include bash config files")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Examples:")
-	fmt.Fprintln(w, "  envocabulary dangling")
-	fmt.Fprintln(w, "  envocabulary dangling --orphans --bash")
+	fmt.Fprint(w, `envocabulary dangling — list config references whose target no longer exists
+
+Usage:
+  envocabulary dangling [--orphans] [--bash]
+
+Reports two classes of dangling reference:
+  - source ~/foo where the target file is missing
+  - export FOO=/path (or bare FOO=/path) where the literal path-like
+    value (starts with / or ~) does not exist on disk
+
+Skipped: values with $ (variable expansion) or : (PATH-like), aliases,
+functions, and colon-accumulated vars (PATH, MANPATH, FPATH, ...).
+
+Exits non-zero when at least one finding exists.
+
+Flags:
+  --orphans  include orphan/backup files in the search
+  --bash     include bash config files
+
+Examples:
+  envocabulary dangling
+  envocabulary dangling --orphans --bash
+`)
 }
 
 func helpDedup(w io.Writer) {
-	fmt.Fprintln(w, "envocabulary dedup — find duplicate exports/aliases across config files")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  envocabulary dedup [--orphans] [--bash]")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Description:")
-	fmt.Fprintln(w, "  Cross-file duplicate report: groups duplicate exports/assigns/aliases/functions")
-	fmt.Fprintln(w, "  by name, marks the winning writer (last in execution order) and shadowed losers.")
-	fmt.Fprintln(w, "  PATH-like accumulating vars (PATH, MANPATH, FPATH, INFOPATH, CDPATH, DYLD_*) and")
-	fmt.Fprintln(w, "  `source` lines are deliberately excluded — they extend rather than override.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Flags:")
-	fmt.Fprintln(w, "  --orphans  include orphan/backup files in the search")
-	fmt.Fprintln(w, "  --bash     include bash config files")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Examples:")
-	fmt.Fprintln(w, "  envocabulary dedup")
-	fmt.Fprintln(w, "  envocabulary dedup --bash --orphans")
+	fmt.Fprint(w, `envocabulary dedup — find duplicate exports/aliases across config files
+
+Usage:
+  envocabulary dedup [--orphans] [--bash]
+
+Groups duplicate exports/assigns/aliases/functions by name, marks the winning
+writer (last in execution order) and shadowed losers.
+
+Excluded: PATH-like accumulating vars (PATH, MANPATH, FPATH, ...) and source
+lines — they extend rather than override.
+
+Flags:
+  --orphans  include orphan/backup files in the search
+  --bash     include bash config files
+
+Examples:
+  envocabulary dedup
+  envocabulary dedup --bash --orphans
+`)
 }
 
 func helpClean(w io.Writer) {
-	fmt.Fprintln(w, "envocabulary clean — strip template/boilerplate comments from a config file")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  envocabulary clean [--full] [--color=MODE] FILE")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Description:")
-	fmt.Fprintln(w, "  Default mode is dry-run: prints a preview of the lines that would be stripped,")
-	fmt.Fprintln(w, "  one per output line, prefixed with `- LINENO  ...`. The input FILE is never")
-	fmt.Fprintln(w, "  modified by either mode.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "  Pass --full to emit the full cleaned file content to stdout instead. Then")
-	fmt.Fprintln(w, "  redirect to a new file and replace at your own discretion.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "  Heuristic errs on keeping — if a comment doesn't clearly match a strip rule,")
-	fmt.Fprintln(w, "  it stays. Real code is never removed. Works on any shell config file.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Arguments:")
-	fmt.Fprintln(w, "  FILE         path to the shell config file (e.g. ~/.zshrc, ~/.bashrc)")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Flags:")
-	fmt.Fprintln(w, "  --full       emit full cleaned content (instead of dry-run preview)")
-	fmt.Fprintln(w, "  --color=MODE color stripped lines in dry-run output: auto|always|never (default auto)")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Examples:")
-	fmt.Fprintln(w, "  envocabulary clean ~/.zshrc                            # preview what would be stripped")
-	fmt.Fprintln(w, "  envocabulary clean ~/.bashrc                           # bash works the same")
-	fmt.Fprintln(w, "  envocabulary clean --full ~/.zshrc > ~/.zshrc.cleaned  # save cleaned copy")
-	fmt.Fprintln(w, "  diff ~/.zshrc ~/.zshrc.cleaned                         # review before replacing")
+	fmt.Fprint(w, `envocabulary clean — strip template/boilerplate comments from a config file
+
+Usage:
+  envocabulary clean [--full] FILE
+
+Default is dry-run: lists lines that would be stripped, one per line as
+'- LINENO  ...'. With --full, emits the cleaned content to stdout instead.
+The input FILE is never modified.
+
+Heuristic errs on keeping: real code is never removed; ambiguous comments stay.
+
+Arguments:
+  FILE         path to the shell config file (e.g. ~/.zshrc, ~/.bashrc)
+
+Flags:
+  --full       emit full cleaned content (instead of dry-run preview)
+
+Examples:
+  envocabulary clean ~/.zshrc
+  envocabulary clean --full ~/.zshrc > ~/.zshrc.cleaned
+  diff ~/.zshrc ~/.zshrc.cleaned
+`)
 }
 
 func runCatalog(args []string, stdout, stderr io.Writer) int {
@@ -285,14 +269,7 @@ func runCatalog(args []string, stdout, stderr io.Writer) int {
 	bash := fs.Bool("bash", false, "include bash config files")
 	lineNums := fs.Bool("n", false, "prefix each line with its line number")
 	dedupFlag := fs.Bool("dedup", false, "comment out lines overridden by a later writer")
-	colorFlag := fs.String("color", "auto", "color override-annotated lines (auto|always|never)")
 	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-
-	mode, err := color.ParseMode(*colorFlag)
-	if err != nil {
-		fmt.Fprintln(stderr, "error:", err)
 		return 2
 	}
 
@@ -301,7 +278,6 @@ func runCatalog(args []string, stdout, stderr io.Writer) int {
 		IncludeBash:    *bash,
 		LineNumbers:    *lineNums,
 		Dedup:          *dedupFlag,
-		Color:          mode,
 	}
 	if err := catalog.Write(stdout, opts); err != nil {
 		return die(stderr, err)
@@ -441,18 +417,11 @@ func runClean(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	fs.Usage = func() { helpClean(stdout) }
 	full := fs.Bool("full", false, "emit full cleaned content (default is dry-run preview of stripped lines)")
-	colorFlag := fs.String("color", "auto", "color stripped lines in dry-run output (auto|always|never)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if fs.NArg() < 1 {
 		helpClean(stderr)
-		return 2
-	}
-
-	mode, err := color.ParseMode(*colorFlag)
-	if err != nil {
-		fmt.Fprintln(stderr, "error:", err)
 		return 2
 	}
 
@@ -477,13 +446,11 @@ func runClean(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return die(stderr, err)
 	}
-	colorOn := mode.Enabled(stdout)
 	for _, d := range decisions {
 		if d.Kept {
 			continue
 		}
-		line := fmt.Sprintf("- %5d  %s", d.LineNum, d.Content)
-		fmt.Fprintln(stdout, color.Wrap(line, color.LightRed, colorOn))
+		fmt.Fprintf(stdout, "- %5d  %s\n", d.LineNum, d.Content)
 	}
 	return 0
 }
