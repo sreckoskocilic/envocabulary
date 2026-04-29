@@ -67,17 +67,17 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `envocabulary — shell env-var forensics & static config audit (read-only)
 
 Live-env (introspects the running shell):
-  scan [--json] [--values]
+  scan [--json] [--values] [--shell SHELL]
       Group every variable in the current env by origin (shell-file,
       direnv, launchd, terminal, ssh, system, ...). Default command.
 
-  explain [--json] [--values] NAME
-      Show full attribution for one variable: origin, primary writer,
+  explain [--json] [--values] [--shell SHELL] NAME
+      Full attribution for one variable: origin, primary writer,
       and every other writer in startup order.
 
 Static-file (parses config without running it):
   inventory
-      List counts and names per shell config file.
+      Counts and names per shell config file.
 
   catalog [--orphans] [--bash] [-n] [--dedup]
       Concatenate canonical zsh config files in startup order to stdout.
@@ -86,10 +86,10 @@ Static-file (parses config without running it):
       Cross-file duplicate report for exports/assigns/aliases/functions.
 
   dangling [--orphans] [--bash]
-      List source lines and path-like exports whose target is gone.
+      Source lines and path-like exports whose target is gone.
 
   clean FILE
-      Strip default/template comments from FILE to stdout (never mutates).
+      Strip boilerplate comments from FILE to stdout (never mutates).
 
 Run with no arguments for scan. envocabulary <command> -h for per-command help.
 `)
@@ -141,21 +141,20 @@ Examples:
   envocabulary explain JAVA_HOME
   envocabulary explain --values EDITOR
   envocabulary explain --shell bash PATH
-  envocabulary explain --json PATH | jq
+  envocabulary explain --json EDITOR | jq
 `)
 }
 
 func helpInventory(w io.Writer) {
-	fmt.Fprint(w, `envocabulary inventory — list counts and names per shell config file
+	fmt.Fprint(w, `envocabulary inventory — counts and names per shell config file
 
 Usage:
   envocabulary inventory
 
-Description:
-  Walks your shell config files: canonical zsh (.zshenv, .zprofile, .zshrc,
-  .zlogin, .zlogout in $ZDOTDIR or $HOME), canonical bash (.bashrc, .bash_profile,
-  .profile), and orphan/backup variants. Reports counts and names per file,
-  grouped by kind (exports, assigns, aliases, functions, sources).
+Walks your shell config files: canonical zsh (.zshenv, .zprofile, .zshrc,
+.zlogin, .zlogout in $ZDOTDIR or $HOME), canonical bash (.bashrc, .bash_profile,
+.profile), and orphan/backup variants. Reports counts and names per file,
+grouped by kind (exports, assigns, aliases, functions, sources).
 
 Examples:
   envocabulary inventory
@@ -189,7 +188,7 @@ Examples:
 }
 
 func helpDangling(w io.Writer) {
-	fmt.Fprint(w, `envocabulary dangling — list config references whose target no longer exists
+	fmt.Fprint(w, `envocabulary dangling — source lines and path-like exports whose target is gone
 
 Usage:
   envocabulary dangling [--orphans] [--bash]
@@ -215,7 +214,7 @@ Examples:
 }
 
 func helpDedup(w io.Writer) {
-	fmt.Fprint(w, `envocabulary dedup — find duplicate exports/aliases across config files
+	fmt.Fprint(w, `envocabulary dedup — cross-file duplicate report for exports/assigns/aliases/functions
 
 Usage:
   envocabulary dedup [--orphans] [--bash]
@@ -225,6 +224,8 @@ writer (last in execution order) and shadowed losers.
 
 Excluded: PATH-like accumulating vars (PATH, MANPATH, FPATH, ...) and source
 lines — they extend rather than override.
+
+Always exits 0 (duplicates are informational, not errors).
 
 Flags:
   --orphans  include orphan/backup files in the search
@@ -237,7 +238,7 @@ Examples:
 }
 
 func helpClean(w io.Writer) {
-	fmt.Fprint(w, `envocabulary clean — strip template/boilerplate comments from a config file
+	fmt.Fprint(w, `envocabulary clean — strip boilerplate comments from a config file
 
 Usage:
   envocabulary clean [--full] FILE
