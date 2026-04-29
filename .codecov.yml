@@ -9,20 +9,8 @@ coverage:
         target: 80%
 
 comment:
-  layout: "header, diff, files, footer"
-  behavior: default
-  require_changes: false
+  layout: "false"
 
-# Files excluded from the coverage calculation. Convention: any file named
-# `*external.go` (or with a top-level docstring tagging it as an external
-# boundary) contains code that spawns subprocesses, calls non-deterministic
-# syscalls, or otherwise can't be exercised in unit tests without a real
-# runtime environment. The testable layer that consumes their output lives
-# alongside in regular files and IS fully tested.
 ignore:
   - "internal/capture/external.go"   # subprocess wrappers (env -0, zsh xtrace)
   - "cmd/envocabulary/external.go"   # CLI entry points that spawn subprocesses
-# Note: cmd/envocabulary/main.go is NOT ignored. It contains the run() dispatch,
-# helpX, emitX, and 4 of 6 runX functions — all testable and tested. The single
-# main() shim line is the only untestable code there; ignoring the whole file
-# would hide ~25 covered functions, which would defeat the metric.

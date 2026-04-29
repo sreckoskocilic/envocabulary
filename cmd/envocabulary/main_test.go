@@ -12,6 +12,7 @@ import (
 	"github.com/sreckoskocilic/envocabulary/internal/dangling"
 	"github.com/sreckoskocilic/envocabulary/internal/dedup"
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
+	"github.com/sreckoskocilic/envocabulary/internal/lost"
 	"github.com/sreckoskocilic/envocabulary/internal/model"
 )
 
@@ -280,7 +281,7 @@ func TestRun_UnknownCommand(t *testing.T) {
 }
 
 func TestUsageAndHelpFunctionsAllOutput(t *testing.T) {
-	helpers := []func(io.Writer){usage, helpScan, helpExplain, helpInventory, helpCatalog, helpDedup, helpDangling, helpClean}
+	helpers := []func(io.Writer){usage, helpScan, helpExplain, helpInventory, helpCatalog, helpDedup, helpDangling, helpLost, helpClean}
 	for i, h := range helpers {
 		var buf bytes.Buffer
 		h(&buf)
@@ -678,5 +679,100 @@ func TestRun_DispatchToDangling(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "no dangling references") {
 		t.Errorf("expected dangling empty-state output; got:\n%s", stdout.String())
+	}
+}
+
+func TestRunLost_NoOrphans(t *testing.T) {
+	setupFakeShellHome(t, map[string]string{
+		".zshrc": "export FOO=1\n",
+	})
+	var stdout, stderr bytes.Buffer
+	code := runLost(nil, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected 0, got %d", code)
+	}
+	if !strings.Contains(stdout.String(), "no lost items found") {
+		t.Errorf("expected empty-state notice; got:\n%s", stdout.String())
+	}
+}
+
+func TestRunLost_FindsLostItems(t *testing.T) {
+	setupFakeShellHome(t, map[string]string{
+		".zshrc":        "export EDITOR=vim\nalias ll='ls -la'\n",
+		".zshrc.backup": "export EDITOR=vim\nexport JAVA_HOME=/opt/java\nalias gs='git status'\n",
+	})
+	var stdout, stderr bytes.Buffer
+	code := runLost(nil, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected 0, got %d", code)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "JAVA_HOME") {
+		t.Errorf("expected JAVA_HOME in lost output; got:\n%s", out)
+	}
+	if !strings.Contains(out, "gs") {
+		t.Errorf("expected gs alias in lost output; got:\n%s", out)
+	}
+	if strings.Contains(out, "EDITOR") {
+		t.Errorf("EDITOR should not be lost (present in canonical); got:\n%s", out)
+	}
+}
+
+func TestRunLost_BashFlag(t *testing.T) {
+	setupFakeShellHome(t, map[string]string{
+		".bashrc":       "export FROM_BASH=1\n",
+		".zshrc.backup": "export FROM_BASH=1\nexport ONLY_ORPHAN=1\n",
+	})
+	var stdout, stderr bytes.Buffer
+	code := runLost([]string{"--bash"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected 0, got %d", code)
+	}
+	out := stdout.String()
+	if strings.Contains(out, "FROM_BASH") {
+		t.Errorf("FROM_BASH should not be lost with --bash (present in .bashrc); got:\n%s", out)
+	}
+	if !strings.Contains(out, "ONLY_ORPHAN") {
+		t.Errorf("expected ONLY_ORPHAN in lost output; got:\n%s", out)
+	}
+}
+
+func TestRunLost_FlagParseError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runLost([]string{"--bogus"}, &stdout, &stderr)
+	if code != 2 {
+		t.Errorf("expected 2 for unknown flag; got %d", code)
+	}
+}
+
+func TestRun_DispatchToLost(t *testing.T) {
+	setupFakeShellHome(t, map[string]string{".zshrc": "export X=1\n"})
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"lost"}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("expected 0; got %d", code)
+	}
+	if !strings.Contains(stdout.String(), "no lost items") {
+		t.Errorf("expected lost empty-state output; got:\n%s", stdout.String())
+	}
+}
+
+func TestEmitLostText(t *testing.T) {
+	findings := []lost.Finding{
+		{File: "/u/.zshrc.backup", Kind: inventory.KindExport, Name: "JAVA_HOME", Line: 5},
+		{File: "/u/.zshrc.backup", Kind: inventory.KindAlias, Name: "gs", Line: 7},
+		{File: "/u/.zshrc.old", Kind: inventory.KindFunction, Name: "myfunc", Line: 10},
+	}
+	var buf bytes.Buffer
+	emitLostText(&buf, findings)
+	out := buf.String()
+	if !strings.Contains(out, "## /u/.zshrc.backup") || !strings.Contains(out, "## /u/.zshrc.old") {
+		t.Errorf("expected file headers; got:\n%s", out)
+	}
+	if !strings.Contains(out, "JAVA_HOME") || !strings.Contains(out, "gs") || !strings.Contains(out, "myfunc") {
+		t.Errorf("expected item names; got:\n%s", out)
+	}
+	if !strings.Contains(out, ":5") || !strings.Contains(out, ":7") || !strings.Contains(out, ":10") {
+		t.Errorf("expected line numbers; got:\n%s", out)
 	}
 }
