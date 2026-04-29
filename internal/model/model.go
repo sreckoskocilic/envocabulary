@@ -1,5 +1,7 @@
 package model
 
+import "strings"
+
 type Origin string
 
 const (
@@ -30,11 +32,10 @@ type TraceEntry struct {
 
 func IsDeferredListVar(name string) bool {
 	switch name {
-	case "PATH", "MANPATH", "INFOPATH", "FPATH", "CDPATH",
-		"DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH", "DYLD_FRAMEWORK_PATH":
+	case "PATH", "MANPATH", "INFOPATH", "FPATH", "CDPATH":
 		return true
 	}
-	return false
+	return strings.HasPrefix(name, "DYLD_")
 }
 
 func IsDirenvVar(name string) bool {

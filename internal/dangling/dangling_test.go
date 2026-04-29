@@ -43,25 +43,6 @@ func TestExpand_Tilde(t *testing.T) {
 	}
 }
 
-func TestIsDeferredListVar(t *testing.T) {
-	cases := map[string]bool{
-		"PATH":                true,
-		"MANPATH":             true,
-		"FPATH":               true,
-		"INFOPATH":            true,
-		"CDPATH":              true,
-		"DYLD_LIBRARY_PATH":   true,
-		"DYLD_FALLBACK_PATHS": true,
-		"JAVA_HOME":           false,
-		"FOO":                 false,
-	}
-	for in, want := range cases {
-		if got := isDeferredListVar(in); got != want {
-			t.Errorf("isDeferredListVar(%q) = %v, want %v", in, got, want)
-		}
-	}
-}
-
 func TestFind_SourceSkipsVarExpansion(t *testing.T) {
 	files := []inventory.File{{
 		Path: "/fake/.zshrc",

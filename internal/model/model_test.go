@@ -12,6 +12,7 @@ func TestIsDeferredListVar(t *testing.T) {
 		"DYLD_LIBRARY_PATH":          true,
 		"DYLD_FALLBACK_LIBRARY_PATH": true,
 		"DYLD_FRAMEWORK_PATH":        true,
+		"DYLD_INSERT_LIBRARIES":      true,
 		"EDITOR":                     false,
 		"HOME":                       false,
 		"":                           false,

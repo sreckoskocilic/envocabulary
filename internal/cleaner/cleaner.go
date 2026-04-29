@@ -111,6 +111,9 @@ func Clean(r io.Reader) (string, Stats, error) {
 			out = append(out, d.Content)
 		}
 	}
+	if len(out) == 0 {
+		return "", stats, nil
+	}
 	return strings.Join(out, "\n") + "\n", stats, nil
 }
 

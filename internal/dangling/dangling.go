@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
+	"github.com/sreckoskocilic/envocabulary/internal/model"
 )
 
 type Reason string
@@ -81,7 +82,7 @@ func checkSource(filePath string, it inventory.Item) (Finding, bool) {
 }
 
 func checkPathValue(filePath string, it inventory.Item) (Finding, bool) {
-	if isDeferredListVar(it.Name) || !looksLikeLiteralPath(it.Value) {
+	if model.IsDeferredListVar(it.Name) || !looksLikeLiteralPath(it.Value) {
 		return Finding{}, false
 	}
 	target := expand(it.Value)
@@ -135,15 +136,4 @@ func expand(p string) string {
 func exists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
-}
-
-// Duplicated from internal/dedup deliberately — both packages share the same
-// domain rule (colon-accumulated vars don't follow last-writer semantics) but
-// a shared package is overkill for two callers. Keep in sync if extended.
-func isDeferredListVar(name string) bool {
-	switch name {
-	case "PATH", "MANPATH", "FPATH", "INFOPATH", "CDPATH":
-		return true
-	}
-	return strings.HasPrefix(name, "DYLD_")
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sreckoskocilic/envocabulary/internal/dangling"
 	"github.com/sreckoskocilic/envocabulary/internal/dedup"
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
 	"github.com/sreckoskocilic/envocabulary/internal/model"
@@ -24,6 +25,7 @@ func TestTruncate(t *testing.T) {
 		{"exactlyten", 10, "exactlyten"},
 		{"longer than ten chars", 10, "longer tha..."},
 		{"", 5, ""},
+		{"héllo wörld café", 10, "héllo wörl..."},
 	}
 	for _, tc := range cases {
 		if got := truncate(tc.s, tc.n); got != tc.want {
@@ -278,7 +280,7 @@ func TestRun_UnknownCommand(t *testing.T) {
 }
 
 func TestUsageAndHelpFunctionsAllOutput(t *testing.T) {
-	helpers := []func(io.Writer){usage, helpScan, helpExplain, helpInventory, helpCatalog, helpDedup, helpClean}
+	helpers := []func(io.Writer){usage, helpScan, helpExplain, helpInventory, helpCatalog, helpDedup, helpDangling, helpClean}
 	for i, h := range helpers {
 		var buf bytes.Buffer
 		h(&buf)
@@ -654,6 +656,26 @@ func TestRunDangling_FlagParseError(t *testing.T) {
 	code := runDangling([]string{"--bogus"}, &stdout, &stderr)
 	if code != 2 {
 		t.Errorf("expected 2 for unknown flag; got %d", code)
+	}
+}
+
+func TestEmitDanglingText(t *testing.T) {
+	findings := []dangling.Finding{
+		{File: "/u/.zshrc", Line: 3, Kind: inventory.KindSource, Name: "~/gone.sh", Value: "~/gone.sh", Reason: dangling.ReasonSourceMissing},
+		{File: "/u/.zshrc", Line: 7, Kind: inventory.KindExport, Name: "JAVA_HOME", Value: "/opt/gone", Reason: dangling.ReasonPathMissing},
+		{File: "/u/.zprofile", Line: 1, Kind: inventory.KindExport, Name: "FOO", Value: "/no/such", Reason: dangling.ReasonPathMissing},
+	}
+	var buf bytes.Buffer
+	emitDanglingText(&buf, findings)
+	out := buf.String()
+	if !strings.Contains(out, "## /u/.zshrc") || !strings.Contains(out, "## /u/.zprofile") {
+		t.Errorf("expected file headers; got:\n%s", out)
+	}
+	if !strings.Contains(out, "source target missing") || !strings.Contains(out, "path does not exist") {
+		t.Errorf("expected reason strings; got:\n%s", out)
+	}
+	if !strings.Contains(out, "JAVA_HOME") || !strings.Contains(out, "~/gone.sh") {
+		t.Errorf("expected item details; got:\n%s", out)
 	}
 }
 

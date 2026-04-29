@@ -3,9 +3,9 @@ package dedup
 import (
 	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
+	"github.com/sreckoskocilic/envocabulary/internal/model"
 )
 
 type Occurrence struct {
@@ -31,16 +31,6 @@ var dedupKinds = map[inventory.Kind]bool{
 	inventory.KindFunction: true,
 }
 
-// Colon-accumulated variables: multiple export lines extend them rather than
-// overwrite. Flagging them as duplicates would be misleading.
-func isDeferredListVar(name string) bool {
-	switch name {
-	case "PATH", "MANPATH", "FPATH", "INFOPATH", "CDPATH":
-		return true
-	}
-	return strings.HasPrefix(name, "DYLD_")
-}
-
 // Find groups duplicate items across files. The input slice's order is treated
 // as the execution order — the last occurrence in that order is the winner.
 func Find(files []inventory.File) []Group {
@@ -55,7 +45,7 @@ func Find(files []inventory.File) []Group {
 			if !dedupKinds[it.Kind] {
 				continue
 			}
-			if (it.Kind == inventory.KindExport || it.Kind == inventory.KindAssign) && isDeferredListVar(it.Name) {
+			if (it.Kind == inventory.KindExport || it.Kind == inventory.KindAssign) && model.IsDeferredListVar(it.Name) {
 				continue
 			}
 			entries = append(entries, entry{

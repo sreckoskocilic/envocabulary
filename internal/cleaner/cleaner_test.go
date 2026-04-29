@@ -69,6 +69,11 @@ func TestClean(t *testing.T) {
 			"export A=1\n\nexport B=2\n",
 			"export A=1\n\nexport B=2\n",
 		},
+		{
+			"empty input returns empty string",
+			"",
+			"",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
