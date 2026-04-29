@@ -14,6 +14,7 @@ import (
 	"github.com/sreckoskocilic/envocabulary/internal/dangling"
 	"github.com/sreckoskocilic/envocabulary/internal/dedup"
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
+	"github.com/sreckoskocilic/envocabulary/internal/lost"
 	"github.com/sreckoskocilic/envocabulary/internal/model"
 )
 
@@ -53,6 +54,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 				return runDedup(args[1:], stdout, stderr)
 			case "dangling":
 				return runDangling(args[1:], stdout, stderr)
+			case "lost":
+				return runLost(args[1:], stdout, stderr)
 			default:
 				fmt.Fprintf(stderr, "unknown command: %s\n\n", args[0])
 				usage(stderr)
@@ -69,7 +72,7 @@ func usage(w io.Writer) {
 Live-env (introspects the running shell):
   scan [--json] [--values] [--shell SHELL]
       Group every variable in the current env by origin (shell-file,
-      direnv, launchd, terminal, ssh, system, ...). Default command.
+      direnv, launchd, terminal, ssh, system...), default command.
 
   explain [--json] [--values] [--shell SHELL] NAME
       Full attribution for one variable: origin, primary writer,
@@ -80,13 +83,16 @@ Static-file (parses config without running it):
       Counts and names per shell config file.
 
   catalog [--orphans] [--bash] [-n] [--dedup]
-      Concatenate canonical zsh config files in startup order to stdout.
+      Concatenate canonical zsh config files.
 
   dedup [--orphans] [--bash]
       Cross-file duplicate report for exports/assigns/aliases/functions.
 
   dangling [--orphans] [--bash]
-      Source lines and path-like exports whose target is gone.
+      Source lines and path-like exports of missing targets.
+
+  lost [--bash]
+      Config in orphan files not found in canonical.
 
   clean FILE
       Strip boilerplate comments from FILE to stdout (never mutates).
@@ -101,10 +107,6 @@ func helpScan(w io.Writer) {
 Usage:
   envocabulary scan [--json] [--values] [--shell SHELL]
   envocabulary [--json] [--values]                (scan is the default command)
-
-Origins: shell-file (file:line), direnv, launchd, terminal, ssh, system,
-deferred-list-var, unknown. Tracer auto-detects from $SHELL; use --shell
-to override.
 
 Flags:
   --json          emit JSON instead of grouped text
@@ -124,10 +126,6 @@ func helpExplain(w io.Writer) {
 
 Usage:
   envocabulary explain [--json] [--values] [--shell SHELL] NAME
-
-Lists every writer (file:line) for NAME in startup order, marks the winner,
-and reports the origin bucket. Tracer auto-detects from $SHELL; use --shell
-to override.
 
 Arguments:
   NAME            the env variable name (e.g. JAVA_HOME, EDITOR)
@@ -151,11 +149,6 @@ func helpInventory(w io.Writer) {
 Usage:
   envocabulary inventory
 
-Walks your shell config files: canonical zsh (.zshenv, .zprofile, .zshrc,
-.zlogin, .zlogout in $ZDOTDIR or $HOME), canonical bash (.bashrc, .bash_profile,
-.profile), and orphan/backup variants. Reports counts and names per file,
-grouped by kind (exports, assigns, aliases, functions, sources).
-
 Examples:
   envocabulary inventory
   envocabulary inventory | less
@@ -168,8 +161,7 @@ func helpCatalog(w io.Writer) {
 Usage:
   envocabulary catalog [--orphans] [--bash] [-n] [--dedup]
 
-Emits canonical zsh config files concatenated to stdout in login order,
-separated by banner headers. Top-to-bottom mirrors execution.
+Prints your zsh config files (.zshenv, .zprofile, .zshrc, .zlogin, .zlogout)
 
 Flags:
   --orphans       also include backup/variant files (.zshrc.backup, .bashrc.old, ...)
@@ -193,16 +185,6 @@ func helpDangling(w io.Writer) {
 Usage:
   envocabulary dangling [--orphans] [--bash]
 
-Reports two classes of dangling reference:
-  - source ~/foo where the target file is missing
-  - export FOO=/path (or bare FOO=/path) where the literal path-like
-    value (starts with / or ~) does not exist on disk
-
-Skipped: values with $ (variable expansion) or : (PATH-like), aliases,
-functions, and colon-accumulated vars (PATH, MANPATH, FPATH, ...).
-
-Exits non-zero when at least one finding exists.
-
 Flags:
   --orphans  include orphan/backup files in the search
   --bash     include bash config files
@@ -218,14 +200,6 @@ func helpDedup(w io.Writer) {
 
 Usage:
   envocabulary dedup [--orphans] [--bash]
-
-Groups duplicate exports/assigns/aliases/functions by name, marks the winning
-writer (last in execution order) and shadowed losers.
-
-Excluded: PATH-like accumulating vars (PATH, MANPATH, FPATH, ...) and source
-lines — they extend rather than override.
-
-Always exits 0 (duplicates are informational, not errors).
 
 Flags:
   --orphans  include orphan/backup files in the search
@@ -243,17 +217,13 @@ func helpClean(w io.Writer) {
 Usage:
   envocabulary clean [--full] FILE
 
-Default is dry-run: lists lines that would be stripped, one per line as
-'- LINENO  ...'. With --full, emits the cleaned content to stdout instead.
-The input FILE is never modified.
-
-Heuristic errs on keeping: real code is never removed; ambiguous comments stay.
+Previews which lines would be stripped (dry-run).
 
 Arguments:
   FILE         path to the shell config file (e.g. ~/.zshrc, ~/.bashrc)
 
 Flags:
-  --full       emit full cleaned content (instead of dry-run preview)
+  --full       emits full cleaned content
 
 Examples:
   envocabulary clean ~/.zshrc
@@ -410,6 +380,70 @@ func emitDanglingText(w io.Writer, findings []dangling.Finding) {
 			currentFile = f.File
 		}
 		fmt.Fprintf(w, "  %s:%d  %s %s  → %s  (%s)\n", f.File, f.Line, f.Kind, f.Name, f.Value, f.Reason)
+	}
+}
+
+func helpLost(w io.Writer) {
+	fmt.Fprint(w, `envocabulary lost — config in orphan files that no canonical file defines
+
+Usage:
+  envocabulary lost [--bash]
+
+Config from orphan files (.zshrc.backup, .zshrc.old, ...) not in any canonical file.
+
+Flags:
+  --bash  include bash config files
+
+Examples:
+  envocabulary lost
+  envocabulary lost --bash
+`)
+}
+
+func runLost(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("lost", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() { helpLost(stdout) }
+	bash := fs.Bool("bash", false, "include bash config files")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	files := inventory.Discover()
+	keep := make([]inventory.File, 0, len(files))
+	for _, f := range files {
+		switch f.Role {
+		case inventory.RoleCanonicalZsh:
+			keep = append(keep, f)
+		case inventory.RoleCanonicalBash:
+			if *bash {
+				keep = append(keep, f)
+			}
+		case inventory.RoleOrphan:
+			keep = append(keep, f)
+		}
+	}
+
+	findings := lost.Find(keep)
+	if len(findings) == 0 {
+		fmt.Fprintln(stdout, "no lost items found")
+		return 0
+	}
+	emitLostText(stdout, findings)
+	return 0
+}
+
+func emitLostText(w io.Writer, findings []lost.Finding) {
+	currentFile := ""
+	for _, f := range findings {
+		if f.File != currentFile {
+			if currentFile != "" {
+				fmt.Fprintln(w)
+			}
+			fmt.Fprintf(w, "## %s\n", f.File)
+			currentFile = f.File
+		}
+		fmt.Fprintf(w, "  %-10s %-24s :%d\n", f.Kind, f.Name, f.Line)
 	}
 }
 
