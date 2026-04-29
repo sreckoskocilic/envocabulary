@@ -47,8 +47,6 @@ func TestDiscover_FindsCanonicalZsh(t *testing.T) {
 		".bash_profile": "export W=4\n",
 	})
 	got := Discover()
-
-	// Should find at least the 4 canonical files
 	wantNames := map[string]Role{
 		".zshrc":        RoleCanonicalZsh,
 		".zshenv":       RoleCanonicalZsh,
@@ -63,7 +61,6 @@ func TestDiscover_FindsCanonicalZsh(t *testing.T) {
 			}
 		}
 	}
-	// Verify all 4 canonical names appear
 	found := paths(got)
 	for n := range wantNames {
 		if !contains(found, n) {
@@ -79,19 +76,16 @@ func TestDiscover_FindsOrphans(t *testing.T) {
 		".zshrc.old":      "export OLD2=1\n",
 		".zshrc_2023":     "export OLD3=1\n",
 		".bashrc.bak":     "export B1=1\n",
-		".gitconfig":      "[user]\n", // not a shell config
-		".zshrcsomething": "noise\n",  // prefix-only collision, not orphan
+		".gitconfig":      "[user]\n",
+		".zshrcsomething": "noise\n",
 	})
 	got := Discover()
 	found := paths(got)
-
-	// Orphans should appear
 	for _, name := range []string{".zshrc.backup", ".zshrc.old", ".zshrc_2023", ".bashrc.bak"} {
 		if !contains(found, name) {
 			t.Errorf("expected orphan %s in discovery; got %v", name, found)
 		}
 	}
-	// Non-shell files should NOT
 	if contains(found, ".gitconfig") {
 		t.Errorf("non-shell file .gitconfig should not be discovered; got %v", found)
 	}

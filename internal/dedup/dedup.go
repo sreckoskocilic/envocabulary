@@ -22,8 +22,6 @@ type Group struct {
 	Losers []Occurrence
 }
 
-// Kinds eligible for dedup. Sources are excluded — re-sourcing the same file
-// from multiple places is usually intentional, not drift.
 var dedupKinds = map[inventory.Kind]bool{
 	inventory.KindExport:   true,
 	inventory.KindAssign:   true,
@@ -31,8 +29,6 @@ var dedupKinds = map[inventory.Kind]bool{
 	inventory.KindFunction: true,
 }
 
-// Find groups duplicate items across files. The input slice's order is treated
-// as the execution order — the last occurrence in that order is the winner.
 func Find(files []inventory.File) []Group {
 	type entry struct {
 		occ  Occurrence
@@ -90,8 +86,6 @@ func Find(files []inventory.File) []Group {
 	return groups
 }
 
-// LoserSet returns a map keyed by "file\x00line" for quick lookup when
-// annotating catalog output.
 func LoserSet(groups []Group) map[string]Occurrence {
 	out := map[string]Occurrence{}
 	for _, g := range groups {

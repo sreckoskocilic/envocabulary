@@ -172,10 +172,6 @@ var reservedFuncNames = map[string]bool{
 	"unalias": true, "unset": true, "readonly": true, "source": true,
 }
 
-// extractValue returns the literal value from the right-hand side of an
-// assignment. For quoted values it strips matched surrounding quotes. For
-// unquoted values it stops at the first whitespace, so trailing inline content
-// (` # comment`) does not bleed into the value.
 func extractValue(raw string) string {
 	raw = strings.TrimLeft(raw, " \t")
 	if raw == "" {

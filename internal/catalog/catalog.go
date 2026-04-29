@@ -108,7 +108,6 @@ func writeFile(w io.Writer, f inventory.File, opts Options, losers map[string]de
 	case inventory.RoleCanonicalBash:
 		suffix = "  (bash)"
 	case inventory.RoleCanonicalZsh:
-		// no suffix — canonical zsh files are the default presentation
 	}
 	bar := strings.Repeat("=", 68)
 	fmt.Fprintf(w, "# %s\n", bar)

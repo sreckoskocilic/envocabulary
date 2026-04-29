@@ -75,7 +75,6 @@ func TestAttribute_SortedByOriginThenName(t *testing.T) {
 		{Name: "BAR", File: "/u/.zshrc", Line: 2},
 	}
 	got := Attribute(current, trace)
-	// Expect: shell-file group (BAR, FOO sorted), then system (USER), ssh (SSH_TTY), then deferred (PATH)
 	wantOrder := []string{"BAR", "FOO", "USER", "SSH_TTY", "PATH"}
 	if len(got) != len(wantOrder) {
 		t.Fatalf("got %d entries, want %d", len(got), len(wantOrder))
@@ -112,7 +111,7 @@ func TestOriginRank(t *testing.T) {
 func TestLastWriters(t *testing.T) {
 	trace := []model.TraceEntry{
 		{Name: "A", File: "/x", Line: 1},
-		{Name: "A", File: "/y", Line: 2}, // overwrites
+		{Name: "A", File: "/y", Line: 2},
 		{Name: "B", File: "/z", Line: 3},
 	}
 	m := lastWriters(trace)

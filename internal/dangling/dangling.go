@@ -1,9 +1,3 @@
-// Package dangling reports config items that point to filesystem targets which
-// no longer exist: `source` lines and path-like exports/assignments (literal
-// values starting with `/` or `~`) whose target is gone.
-//
-// Skipped: values with `$` or `:` (can't resolve statically), colon-accumulating
-// vars (PATH, MANPATH, ...), aliases, and functions.
 package dangling
 
 import (
@@ -31,8 +25,6 @@ type Finding struct {
 	Reason Reason
 }
 
-// Find walks every parsed item across the given files and returns one Finding
-// per dangling reference. Order matches the input file order, then line order.
 func Find(files []inventory.File) []Finding {
 	var out []Finding
 	for _, f := range files {
@@ -52,15 +44,12 @@ func check(filePath string, it inventory.Item) (Finding, bool) {
 	case inventory.KindExport, inventory.KindAssign:
 		return checkPathValue(filePath, it)
 	case inventory.KindAlias, inventory.KindFunction:
-		// Out of v1 scope (see package doc).
 		return Finding{}, false
 	}
 	return Finding{}, false
 }
 
 func checkSource(filePath string, it inventory.Item) (Finding, bool) {
-	// Skip targets we can't resolve statically: $VAR expansions, command
-	// substitutions, anything but a plain absolute or ~-rooted path.
 	if strings.ContainsAny(it.Name, "$`") {
 		return Finding{}, false
 	}
@@ -99,9 +88,6 @@ func checkPathValue(filePath string, it inventory.Item) (Finding, bool) {
 	}, true
 }
 
-// looksLikeLiteralPath returns true for values we can statically check:
-// they start with `/` or `~`, contain no `$` (variable expansion), and no `:`
-// (PATH-like). Anything else is too ambiguous for v1.
 func looksLikeLiteralPath(v string) bool {
 	if v == "" {
 		return false

@@ -21,7 +21,7 @@ func TestTracedStartupWith_ParsesOutput(t *testing.T) {
 	raw := strings.Join([]string{
 		"+/u/.zprofile:5> export EDITOR=vim",
 		"+/u/.zshrc:12> FOO=bar",
-		"+/u/.zshrc:20> export EDITOR=nvim", // overwrites
+		"+/u/.zshrc:20> export EDITOR=nvim",
 		"some non-trace noise",
 		"",
 	}, "\n")
@@ -129,12 +129,8 @@ func TestEnvWithPS4_StripsPreexistingPS4(t *testing.T) {
 	}
 }
 
-// Smoke-test: ZshTracer either runs zsh successfully or returns an error.
-// We don't assert the content because user's zsh config varies; this just
-// covers the ZshTracer.RawTrace code path.
 func TestZshTracer_Smoke(t *testing.T) {
 	out, err := ZshTracer{}.RawTrace()
-	// One of these two states is fine; both exercise the code path.
 	if err != nil {
 		t.Logf("zsh tracer error (acceptable, e.g. no zsh installed): %v", err)
 		return
@@ -143,7 +139,6 @@ func TestZshTracer_Smoke(t *testing.T) {
 }
 
 func TestZshTracer_ErrorWhenZshUnavailable(t *testing.T) {
-	// Force exec.Command("zsh") to fail by emptying PATH so the binary cannot be located.
 	t.Setenv("PATH", "")
 	_, err := ZshTracer{}.RawTrace()
 	if err == nil {
@@ -170,9 +165,6 @@ func TestCurrentEnv_ErrorWhenEnvBinaryMissing(t *testing.T) {
 	}
 }
 
-// TracedStartup is a 1-line wrapper for TracedStartupWith(ZshTracer{}). The smoke test
-// exercises it end-to-end; we don't separately assert content for the same reason
-// TestZshTracer_Smoke doesn't.
 func TestTracedStartup_Smoke(t *testing.T) {
 	_, _ = TracedStartup()
 }
@@ -200,7 +192,7 @@ func TestDetectShell(t *testing.T) {
 		"/usr/local/bin/zsh":     "zsh",
 		"/bin/bash":              "bash",
 		"/opt/homebrew/bin/bash": "bash",
-		"":                       "zsh", // empty default
+		"":                       "zsh",
 		"/usr/bin/fish":          "zsh", // unsupported defaults to zsh
 		"/bin/sh":                "zsh", // sh defaults to zsh too
 	}
@@ -261,7 +253,6 @@ func TestTracerForShell_UnknownErrors(t *testing.T) {
 	}
 }
 
-// Ensure model.TraceEntry round-trips correctly through TracedStartupWith.
 func TestTracedStartupWith_TypeIntegrity(t *testing.T) {
 	raw := "+/x:1> export FOO=bar"
 	got, err := TracedStartupWith(fakeTracer{output: raw})

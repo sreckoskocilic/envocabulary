@@ -82,7 +82,6 @@ func TestFilterFiles(t *testing.T) {
 
 	t.Run("with --orphans only includes zsh-flavored orphans", func(t *testing.T) {
 		got := filterFiles(files, Options{IncludeOrphans: true})
-		// Should include canonical zsh + zsh orphan, but NOT bash orphan
 		paths := make([]string, len(got))
 		for i, f := range got {
 			paths[i] = f.Path

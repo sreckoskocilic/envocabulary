@@ -1,13 +1,4 @@
-// Package boundary: runScan and runExplain depend on capture.CurrentEnv() and
-// capture.TracedStartup(), both of which spawn external subprocesses. Their happy
-// paths can't be exercised in unit tests without a real shell environment + trace
-// — so this file is excluded from coverage reporting via .codecov.yml.
-//
-// All testable CLI logic (run dispatch, flag parsing, helpX, emitX) lives in
-// main.go and IS fully tested.
-//
-// Convention: any new run* function that depends on subprocess-derived input
-// belongs here, not in main.go.
+// spawns real shells
 
 package main
 

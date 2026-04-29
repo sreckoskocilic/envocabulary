@@ -45,7 +45,7 @@ func TestDedupFileRank(t *testing.T) {
 		{"/u/.zshrc", inventory.RoleCanonicalZsh, 2},
 		{"/u/.zlogin", inventory.RoleCanonicalZsh, 3},
 		{"/u/.zlogout", inventory.RoleCanonicalZsh, 4},
-		{".zshrc", inventory.RoleCanonicalZsh, 2}, // no slash
+		{".zshrc", inventory.RoleCanonicalZsh, 2},
 		{"/u/.bashrc", inventory.RoleCanonicalBash, 100},
 		{"/u/.zshrc.bak", inventory.RoleOrphan, 200},
 		{"/u/x", inventory.Role("nonsense"), 999},
@@ -290,8 +290,6 @@ func TestUsageAndHelpFunctionsAllOutput(t *testing.T) {
 	}
 }
 
-// --- runInventory / runCatalog / runDedup / runClean: filesystem-fixture tests ---
-
 func setupFakeShellHome(t *testing.T, files map[string]string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -486,7 +484,6 @@ func TestRunClean_FileNotFound(t *testing.T) {
 
 func TestRunExplain_NoName(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	// Set HOME to empty dir so trace doesn't pick up real config
 	t.Setenv("HOME", t.TempDir())
 	code := runExplain(nil, &stdout, &stderr)
 	if code != 2 {
@@ -532,16 +529,9 @@ func TestRun_DispatchToClean(t *testing.T) {
 }
 
 func TestRun_LeadingDashNonHelpFallsThroughToScanArgs(t *testing.T) {
-	// Args starting with - that aren't -h/-V/-help/-version must not match
-	// the no-dash subcommand dispatch and must reach the runScan(args) fallthrough.
-	// We can't fully exercise runScan without zsh, but we can verify the dispatch
-	// branch is taken by checking that a flag-parse failure surfaces as exit 2.
 	t.Setenv("PATH", "")
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"--bogus-flag"}, &stdout, &stderr)
-	// runScan will fail at CurrentEnv (env -0 not on PATH) → exit 1 from die()
-	// or fail at flag parse → exit 2. Either non-zero is acceptable; the point is
-	// we hit the fallthrough.
 	if code == 0 {
 		t.Errorf("expected non-zero exit from leading-dash dispatch; got %d", code)
 	}

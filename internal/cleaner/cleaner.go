@@ -38,8 +38,6 @@ type lineInfo struct {
 	inner     string
 }
 
-// Process reads r and returns a per-line decision for every line in the file.
-// Caller assembles the final output (full cleaned content vs. dry-run diff).
 func Process(r io.Reader) ([]Decision, Stats, error) {
 	var lines []string
 	sc := bufio.NewScanner(r)
@@ -98,8 +96,6 @@ func Process(r io.Reader) ([]Decision, Stats, error) {
 	return decisions, stats, nil
 }
 
-// Clean returns the file content with stripped lines removed.
-// Convenience wrapper around Process for callers that just want the cleaned text.
 func Clean(r io.Reader) (string, Stats, error) {
 	decisions, stats, err := Process(r)
 	if err != nil {
