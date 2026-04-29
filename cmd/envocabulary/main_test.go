@@ -281,7 +281,7 @@ func TestRun_UnknownCommand(t *testing.T) {
 }
 
 func TestUsageAndHelpFunctionsAllOutput(t *testing.T) {
-	helpers := []func(io.Writer){usage, helpScan, helpExplain, helpInventory, helpCatalog, helpDedup, helpDangling, helpLost, helpClean}
+	helpers := []func(io.Writer){usage, helpScan, helpExplain, helpInventory, helpCatalog, helpDedup, helpDangling, helpLost, helpClean, helpReport}
 	for i, h := range helpers {
 		var buf bytes.Buffer
 		h(&buf)
@@ -774,5 +774,86 @@ func TestEmitLostText(t *testing.T) {
 	}
 	if !strings.Contains(out, ":5") || !strings.Contains(out, ":7") || !strings.Contains(out, ":10") {
 		t.Errorf("expected line numbers; got:\n%s", out)
+	}
+}
+
+func TestRunReport_TextDefault(t *testing.T) {
+	setupFakeShellHome(t, map[string]string{
+		".zprofile": "export EDITOR=nvim\n",
+		".zshrc":    "export EDITOR=nvim\n",
+	})
+	var stdout, stderr bytes.Buffer
+	code := runReport(nil, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected 0, got %d", code)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "SAFE TO DELETE") {
+		t.Errorf("expected SAFE TO DELETE section; got:\n%s", out)
+	}
+	if !strings.Contains(out, "EDITOR") {
+		t.Errorf("expected EDITOR in output; got:\n%s", out)
+	}
+}
+
+func TestRunReport_HTML(t *testing.T) {
+	setupFakeShellHome(t, map[string]string{
+		".zshrc": "export FOO=1\n",
+	})
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	var stdout, stderr bytes.Buffer
+	code := runReport([]string{"--html"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected 0, got %d", code)
+	}
+	filename := strings.TrimSpace(stdout.String())
+	if !strings.HasSuffix(filename, ".html") {
+		t.Errorf("expected .html filename; got %q", filename)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, filename))
+	if err != nil {
+		t.Fatalf("expected HTML file to exist: %v", err)
+	}
+	if !strings.Contains(string(data), "<!DOCTYPE html>") {
+		t.Error("expected valid HTML content")
+	}
+}
+
+func TestRunReport_BashFlag(t *testing.T) {
+	setupFakeShellHome(t, map[string]string{
+		".zshrc":  "export FOO=zsh\n",
+		".bashrc": "export FOO=bash\n",
+	})
+	var stdout, stderr bytes.Buffer
+	code := runReport([]string{"--bash"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected 0, got %d", code)
+	}
+	if !strings.Contains(stdout.String(), "FOO") {
+		t.Errorf("expected FOO in output with --bash; got:\n%s", stdout.String())
+	}
+}
+
+func TestRunReport_FlagParseError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runReport([]string{"--bogus"}, &stdout, &stderr)
+	if code != 2 {
+		t.Errorf("expected 2 for unknown flag; got %d", code)
+	}
+}
+
+func TestRun_DispatchToReport(t *testing.T) {
+	setupFakeShellHome(t, map[string]string{".zshrc": "export X=1\n"})
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"report"}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("expected 0; got %d", code)
+	}
+	if !strings.Contains(stdout.String(), "SAFE TO DELETE") {
+		t.Errorf("expected report output; got:\n%s", stdout.String())
 	}
 }

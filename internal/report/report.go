@@ -2,7 +2,6 @@ package report
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -116,17 +115,6 @@ func formatDanglingDef(f dangling.Finding) string {
 
 func shortPath(file string, line int) string {
 	return fmt.Sprintf("%s:%d", tildePath(file), line)
-}
-
-func tildePath(path string) string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return path
-	}
-	if strings.HasPrefix(path, home) {
-		return "~" + path[len(home):]
-	}
-	return path
 }
 
 func summarizeFindings(findings []lost.Finding) string {
