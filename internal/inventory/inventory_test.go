@@ -126,6 +126,36 @@ func TestParseReader(t *testing.T) {
 	}
 }
 
+func TestExtractValue(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty", "", ""},
+		{"unquoted simple", "bar", "bar"},
+		{"unquoted trailing comment", "/path # comment", "/path"},
+		{"double-quoted", `"hello world"`, "hello world"},
+		{"single-quoted", `'/usr/local'`, "/usr/local"},
+		{"double-quoted with internal single", `"it's here"`, "it's here"},
+		{"single-quoted with internal double", `'say "hi"'`, `say "hi"`},
+		{"unclosed double quote", `"no end`, "no end"},
+		{"unclosed single quote", `'no end`, "no end"},
+		{"empty double-quoted", `""`, ""},
+		{"empty single-quoted", `''`, ""},
+		{"leading whitespace stripped", "  bar", "bar"},
+		{"value contains equals", "b=c", "b=c"},
+		{"tab-separated trailing", "/path\t# comment", "/path"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := extractValue(tc.in); got != tc.want {
+				t.Errorf("extractValue(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestHasOrphanPrefix(t *testing.T) {
 	tests := []struct {
 		name string

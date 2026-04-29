@@ -1,4 +1,4 @@
-.PHONY: all build test cover cover-html lint fmt tidy clean release-snapshot install-tools help
+.PHONY: all build test test-linux cover cover-html lint fmt tidy clean release-snapshot install-tools help
 
 GO              ?= go
 GOLANGCI_LINT   ?= golangci-lint
@@ -15,6 +15,10 @@ build:  ## Build the binary
 
 test:  ## Run tests
 	$(GO) test -race $(PKGS)
+
+test-linux:  ## Run tests inside a Linux Docker container (requires Docker)
+	docker run --rm -v "$$PWD":/src -w /src golang:1.22 \
+		sh -c 'apt-get update -qq && apt-get install -y -qq zsh >/dev/null 2>&1 && go test -race ./...'
 
 cover:  ## Run tests with coverage; gate on testable surface (excludes *_external.go)
 	@$(GO) test -race -covermode=atomic -coverprofile=$(COVERAGE_FILE) $(PKGS) > /dev/null

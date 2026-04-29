@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sreckoskocilic/envocabulary/internal/dedup"
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
 )
 
@@ -167,6 +168,45 @@ func TestWrite_DedupAnnotation(t *testing.T) {
 	out := buf.String()
 	if !strings.Contains(out, "# [overridden by") {
 		t.Errorf("expected override annotation; got:\n%s", out)
+	}
+}
+
+func TestWriteFile_MissingFile(t *testing.T) {
+	f := inventory.File{Path: "/nonexistent/.zshrc", Role: inventory.RoleCanonicalZsh}
+	var buf bytes.Buffer
+	err := writeFile(&buf, f, Options{}, nil)
+	if err == nil {
+		t.Fatal("expected error for missing file")
+	}
+	if buf.Len() != 0 {
+		t.Errorf("expected no output for missing file; got:\n%s", buf.String())
+	}
+}
+
+func TestWriteFile_DedupAnnotationOnCorrectLine(t *testing.T) {
+	dir := t.TempDir()
+	rc := filepath.Join(dir, ".zshrc")
+	if err := os.WriteFile(rc, []byte("export FOO=old\nexport BAR=ok\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	losers := map[string]dedup.Occurrence{
+		dedup.Key(rc, 1): {File: filepath.Join(dir, ".zprofile"), Line: 3},
+	}
+
+	var buf bytes.Buffer
+	if err := writeFile(&buf, inventory.File{Path: rc, Role: inventory.RoleCanonicalZsh}, Options{Dedup: true}, losers); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "# [overridden by") {
+		t.Errorf("expected override annotation on line 1; got:\n%s", out)
+	}
+	if strings.Count(out, "# [overridden by") != 1 {
+		t.Errorf("expected exactly one override annotation; got:\n%s", out)
+	}
+	if !strings.Contains(out, "export BAR=ok") {
+		t.Errorf("non-overridden line should appear unchanged; got:\n%s", out)
 	}
 }
 
