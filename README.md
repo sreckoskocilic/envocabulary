@@ -35,16 +35,18 @@ Or `go install github.com/sreckoskocilic/envocabulary/cmd/envocabulary@latest`. 
 
 Live env (introspects your running shell):
 
-- `scan` *(default)* — every variable grouped by origin
-- `explain NAME` — full attribution for one variable
+- `scan` *(default)* — prints all variables in the current env grouped by origin
+- `explain NAME` — prints full attribution for provided variable
 
-Static files (parses config without running it):
+Static files:
 
-- `inventory` — what each config file defines (exports, aliases, functions, sources)
-- `catalog` — concatenates configs in startup order; `--dedup` flags overridden lines
-- `dedup` — cross-file duplicate report
-- `dangling` — `source` targets and path-like exports whose file no longer exists
-- `clean FILE` — strips boilerplate comments to stdout, never mutates the file
+- `inventory` — lists all shell config files and assigned types variables count
+- `catalog` — prints entire shell configuration by merging all its config files
+- `dedup` — cross-file duplicate report for exports, assigns, aliases, functions
+- `dangling` — lists config file entries that no longer reference a valid target
+- `lost` — lists orphaned files (not sourced by any canonical config)
+- `report` — combined audit: safe-to-delete, dedup, dangling, lost results
+- `clean FILE` — prints safe-to-remove lines of provided file
 
 `envocabulary <cmd> -h` for flags. `--shell zsh|bash` overrides auto-detection from `$SHELL` (handy when `$SHELL` is stale inside tmux/SSH/sudo).
 

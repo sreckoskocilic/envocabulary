@@ -9,10 +9,11 @@ import (
 )
 
 type Occurrence struct {
-	File string
-	Kind inventory.Kind
-	Name string
-	Line int
+	File  string
+	Kind  inventory.Kind
+	Name  string
+	Line  int
+	Value string
 }
 
 type Group struct {
@@ -45,7 +46,7 @@ func Find(files []inventory.File) []Group {
 				continue
 			}
 			entries = append(entries, entry{
-				occ:  Occurrence{File: f.Path, Kind: it.Kind, Name: it.Name, Line: it.Line},
+				occ:  Occurrence{File: f.Path, Kind: it.Kind, Name: it.Name, Line: it.Line, Value: it.Value},
 				rank: rank,
 			})
 			rank++
@@ -88,9 +89,9 @@ func Find(files []inventory.File) []Group {
 
 func LoserSet(groups []Group) map[string]Occurrence {
 	out := map[string]Occurrence{}
-	for _, g := range groups {
-		for _, l := range g.Losers {
-			out[Key(l.File, l.Line)] = g.Winner
+	for i := range groups {
+		for j := range groups[i].Losers {
+			out[Key(groups[i].Losers[j].File, groups[i].Losers[j].Line)] = groups[i].Winner
 		}
 	}
 	return out

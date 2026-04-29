@@ -16,6 +16,7 @@ import (
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
 	"github.com/sreckoskocilic/envocabulary/internal/lost"
 	"github.com/sreckoskocilic/envocabulary/internal/model"
+	"github.com/sreckoskocilic/envocabulary/internal/report"
 )
 
 var (
@@ -56,6 +57,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 				return runDangling(args[1:], stdout, stderr)
 			case "lost":
 				return runLost(args[1:], stdout, stderr)
+			case "report":
+				return runReport(args[1:], stdout, stderr)
 			default:
 				fmt.Fprintf(stderr, "unknown command: %s\n\n", args[0])
 				usage(stderr)
@@ -71,38 +74,39 @@ func usage(w io.Writer) {
 
 Live-env (introspects the running shell):
   scan [--json] [--values] [--shell SHELL]
-      Group every variable in the current env by origin (shell-file,
-      direnv, launchd, terminal, ssh, system...), default command.
+      Prints all variables in the current env grouped by origin.
 
   explain [--json] [--values] [--shell SHELL] NAME
-      Full attribution for one variable: origin, primary writer,
-      and every other writer in startup order.
+      Prints full attribution for provided variable.
 
-Static-file (parses config without running it):
+Static-file:
   inventory
-      Counts and names per shell config file.
+      Lists all shell config files and assigned types variables count.
 
   catalog [--orphans] [--bash] [-n] [--dedup]
-      Concatenate canonical zsh config files.
+      Prints entire shell configuration by merging all its config files.
 
   dedup [--orphans] [--bash]
-      Cross-file duplicate report for exports/assigns/aliases/functions.
+      Cross-file duplicate report for exports, assigns, aliases, functions.
 
   dangling [--orphans] [--bash]
-      Source lines and path-like exports of missing targets.
+      Lists config file entries that no longer reference a valid target.
 
   lost [--bash]
-      Config in orphan files not found in canonical.
+      Lists orphaned files (not sourced by any canonical config).
 
   clean FILE
-      Strip boilerplate comments from FILE to stdout (never mutates).
+      Prints safe-to-remove lines of provided file.
+
+  report [--html] [--bash]
+      Combined audit: safe-to-delete, dedup, dangling, lost results.
 
 Run with no arguments for scan. envocabulary <command> -h for per-command help.
 `)
 }
 
 func helpScan(w io.Writer) {
-	fmt.Fprint(w, `envocabulary scan — group every variable in the current env by origin
+	fmt.Fprint(w, `envocabulary scan — prints all variables in the current env grouped by origin
 
 Usage:
   envocabulary scan [--json] [--values] [--shell SHELL]
@@ -122,7 +126,7 @@ Examples:
 }
 
 func helpExplain(w io.Writer) {
-	fmt.Fprint(w, `envocabulary explain — show full attribution for one variable
+	fmt.Fprint(w, `envocabulary explain — prints full attribution for provided variable
 
 Usage:
   envocabulary explain [--json] [--values] [--shell SHELL] NAME
@@ -144,7 +148,7 @@ Examples:
 }
 
 func helpInventory(w io.Writer) {
-	fmt.Fprint(w, `envocabulary inventory — counts and names per shell config file
+	fmt.Fprint(w, `envocabulary inventory — lists all shell config files and assigned types variables count
 
 Usage:
   envocabulary inventory
@@ -156,7 +160,7 @@ Examples:
 }
 
 func helpCatalog(w io.Writer) {
-	fmt.Fprint(w, `envocabulary catalog — concatenate shell config files in startup order
+	fmt.Fprint(w, `envocabulary catalog — prints entire shell configuration by merging all its config files
 
 Usage:
   envocabulary catalog [--orphans] [--bash] [-n] [--dedup]
@@ -180,7 +184,7 @@ Examples:
 }
 
 func helpDangling(w io.Writer) {
-	fmt.Fprint(w, `envocabulary dangling — source lines and path-like exports whose target is gone
+	fmt.Fprint(w, `envocabulary dangling — lists config file entries that no longer reference a valid target
 
 Usage:
   envocabulary dangling [--orphans] [--bash]
@@ -196,7 +200,7 @@ Examples:
 }
 
 func helpDedup(w io.Writer) {
-	fmt.Fprint(w, `envocabulary dedup — cross-file duplicate report for exports/assigns/aliases/functions
+	fmt.Fprint(w, `envocabulary dedup — cross-file duplicate report for exports, assigns, aliases, functions
 
 Usage:
   envocabulary dedup [--orphans] [--bash]
@@ -212,7 +216,7 @@ Examples:
 }
 
 func helpClean(w io.Writer) {
-	fmt.Fprint(w, `envocabulary clean — strip boilerplate comments from a config file
+	fmt.Fprint(w, `envocabulary clean — prints safe-to-remove lines of provided file
 
 Usage:
   envocabulary clean [--full] FILE
@@ -317,18 +321,18 @@ func dedupFileRank(f inventory.File) int {
 
 func emitDedupText(w io.Writer, groups []dedup.Group) {
 	currentKind := inventory.Kind("")
-	for _, g := range groups {
-		if g.Kind != currentKind {
+	for i := range groups {
+		if groups[i].Kind != currentKind {
 			if currentKind != "" {
 				fmt.Fprintln(w)
 			}
-			fmt.Fprintf(w, "## %s\n", g.Kind)
-			currentKind = g.Kind
+			fmt.Fprintf(w, "## %s\n", groups[i].Kind)
+			currentKind = groups[i].Kind
 		}
-		fmt.Fprintf(w, "  %s\n", g.Name)
-		fmt.Fprintf(w, "    winner  %s:%d\n", g.Winner.File, g.Winner.Line)
-		for _, l := range g.Losers {
-			fmt.Fprintf(w, "    loser   %s:%d\n", l.File, l.Line)
+		fmt.Fprintf(w, "  %s\n", groups[i].Name)
+		fmt.Fprintf(w, "    winner  %s:%d\n", groups[i].Winner.File, groups[i].Winner.Line)
+		for j := range groups[i].Losers {
+			fmt.Fprintf(w, "    loser   %s:%d\n", groups[i].Losers[j].File, groups[i].Losers[j].Line)
 		}
 	}
 }
@@ -384,12 +388,12 @@ func emitDanglingText(w io.Writer, findings []dangling.Finding) {
 }
 
 func helpLost(w io.Writer) {
-	fmt.Fprint(w, `envocabulary lost — config in orphan files that no canonical file defines
+	fmt.Fprint(w, `envocabulary lost — lists orphaned files (not sourced by any canonical config)
 
 Usage:
   envocabulary lost [--bash]
 
-Config from orphan files (.zshrc.backup, .zshrc.old, ...) not in any canonical file.
+Scans for orphaned files (not sourced by any canonical config).
 
 Flags:
   --bash  include bash config files
@@ -603,6 +607,73 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return string(r[:n]) + "..."
+}
+
+func helpReport(w io.Writer) {
+	fmt.Fprint(w, `envocabulary report — combined audit report
+
+Usage:
+  envocabulary report [--html] [--bash]
+
+Generates aligned text tables summary report containing
+safe-to-delete, dedup, dangling, lost results.
+
+Flags:
+  --html   write HTML report to MM_DD_YYYY_HH_MM.html in current directory
+  --bash   include bash config files
+
+Examples:
+  envocabulary report
+  envocabulary report --html
+  envocabulary report --bash --html
+`)
+}
+
+func runReport(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("report", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() { helpReport(stdout) }
+	htmlFlag := fs.Bool("html", false, "write HTML report to MM_DD_YYYY_HH_MM.html")
+	bash := fs.Bool("bash", false, "include bash config files")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	files := inventory.Discover()
+	keep := make([]inventory.File, 0, len(files))
+	for _, f := range files {
+		switch f.Role {
+		case inventory.RoleCanonicalZsh:
+			keep = append(keep, f)
+		case inventory.RoleCanonicalBash:
+			if *bash {
+				keep = append(keep, f)
+			}
+		case inventory.RoleOrphan:
+			keep = append(keep, f)
+		}
+	}
+	sort.SliceStable(keep, func(i, j int) bool {
+		return dedupFileRank(keep[i]) < dedupFileRank(keep[j])
+	})
+
+	r := report.Build(keep)
+
+	if *htmlFlag {
+		name := r.Generated.Format("01_02_2006_15_04") + ".html"
+		f, err := os.Create(name)
+		if err != nil {
+			return die(stderr, err)
+		}
+		defer f.Close()
+		if err := report.WriteHTML(f, r); err != nil {
+			return die(stderr, err)
+		}
+		fmt.Fprintln(stdout, name)
+		return 0
+	}
+	report.WriteText(stdout, r)
+	return 0
 }
 
 func die(stderr io.Writer, err error) int {
