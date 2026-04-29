@@ -13,13 +13,13 @@ Works with zsh and bash on macOS, Linux, and FreeBSD.
 
 ## The "ah" moment
 
+A `grep -r JAVA_HOME ~` will show every file that mentions the variable, but it's not clear from the output which assignment is active in the current shell:
+
     $ envocabulary explain JAVA_HOME
     JAVA_HOME
         origin:  shell-file
         winner:  ~/.zshrc:42
         also written at:  ~/.zshenv:8
-
-`grep -r JAVA_HOME ~` shows both files but can't tell you which one actually won at startup. envocabulary runs your shell with xtrace and reads the trace.
 
 ## Install
 
@@ -48,28 +48,25 @@ Static files:
 - `report` — combined audit: safe-to-delete, dedup, dangling, lost results
 - `clean FILE` — prints safe-to-remove lines of provided file
 
-`envocabulary <cmd> -h` for flags. `--shell zsh|bash` overrides auto-detection from `$SHELL` (handy when `$SHELL` is stale inside tmux/SSH/sudo).
+`envocabulary <cmd> -h` for flags.
 
 ## Another example: finding broken references
 
-`dangling` walks your config and reports `source` lines and path-like exports whose target is gone — the `JAVA_HOME=/opt/jdk-i-uninstalled` and `source ~/dotfiles/work-old.zsh` kind of leftovers:
+`dangling` lists config file entries that no longer reference a valid target — the `JAVA_HOME=/opt/jdk-i-uninstalled` and `source ~/dotfiles/work-old.zsh` kind of leftovers:
 
     $ envocabulary dangling
     ## ~/.zshrc
       ~/.zshrc:14  source   → ~/dotfiles/work-old.zsh  (source target missing)
       ~/.zshrc:42  export JAVA_HOME  → /opt/jdk-11  (path does not exist)
 
-Exits non-zero when there are findings, so it composes in shell pipelines.
 
 ## Limits
 
 - **Attribution is last-writer only.** If `.zshrc` sources a helper that exports the variable, you see the helper's `file:line`, not the chain that led there.
-- **Colon-accumulated vars are not attributed.** `PATH`, `MANPATH`, `FPATH`, `DYLD_*` get tagged `deferred-list-var` and skipped — last-writer would lie because these append rather than override. A dedicated subcommand for per-entry attribution is planned.
-- **One assignment per line.** `export A=1 B=2` records `A` only.
-- **`dangling` only flags literal paths.** Values containing `$` (variable expansion) or `:` (PATH-like) are skipped — we can't resolve those statically without lying.
+- **Colon-accumulated vars are not attributed** (`PATH`, `MANPATH`, `FPATH` — constructed from multiple expressions across files).
+- **One assignment per line** (`export EDITOR=vim VISUAL=vim` records `EDITOR` only).
+- **`dangling` will not resolve PATH-like assignments or expansions** (`export GOPATH=$HOME/go`).
 - **Unsupported shells:** fish, nu, csh/tcsh, PowerShell.
-
-If startup tracing fails on a given machine, `scan` falls back to classify-only and prints a warning. Bug reports welcome — include `zsh --version` / `bash --version` and the broken output.
 
 ## Read-only by design
 
