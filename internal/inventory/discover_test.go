@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func setupHome(t *testing.T, files map[string]string) string {
+func setupHome(t *testing.T, files map[string]string) {
 	t.Helper()
 	dir := t.TempDir()
 	for name, content := range files {
@@ -19,7 +19,6 @@ func setupHome(t *testing.T, files map[string]string) string {
 		}
 	}
 	t.Setenv("HOME", dir)
-	return dir
 }
 
 func paths(files []File) []string {
@@ -93,7 +92,6 @@ func TestDiscover_FindsOrphans(t *testing.T) {
 		t.Errorf("prefix-collision .zshrcsomething should not be discovered; got %v", found)
 	}
 }
-
 
 func TestParseFile_Success(t *testing.T) {
 	dir := t.TempDir()

@@ -115,7 +115,6 @@ func TestWrite_BasicEmission(t *testing.T) {
 
 	t.Setenv("HOME", dir)
 
-
 	var buf bytes.Buffer
 	if err := Write(&buf, Options{}); err != nil {
 		t.Fatal(err)
@@ -136,7 +135,6 @@ func TestWrite_LineNumbers(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", dir)
-
 
 	var buf bytes.Buffer
 	if err := Write(&buf, Options{LineNumbers: true}); err != nil {
@@ -159,7 +157,6 @@ func TestWrite_DedupAnnotation(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", dir)
-
 
 	var buf bytes.Buffer
 	if err := Write(&buf, Options{Dedup: true}); err != nil {
@@ -216,7 +213,6 @@ func TestWrite_BashGated(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", dir)
-
 
 	var defaultBuf bytes.Buffer
 	_ = Write(&defaultBuf, Options{})

@@ -303,7 +303,6 @@ func setupFakeShellHome(t *testing.T, files map[string]string) {
 		}
 	}
 	t.Setenv("HOME", dir)
-
 }
 
 func TestRunInventory_BasicCanonicalZsh(t *testing.T) {
