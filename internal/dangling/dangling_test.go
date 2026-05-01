@@ -210,6 +210,23 @@ func TestFind_OrderPreserved(t *testing.T) {
 	}
 }
 
+func TestExpand_HomeError(t *testing.T) {
+	t.Setenv("HOME", "")
+	if got := expand("~"); got != "" {
+		t.Errorf("expand(~) with no HOME should return empty; got %q", got)
+	}
+	if got := expand("~/foo"); got != "" {
+		t.Errorf("expand(~/foo) with no HOME should return empty; got %q", got)
+	}
+}
+
+func TestCheck_UnknownKind(t *testing.T) {
+	_, ok := check("/u/.zshrc", inventory.Item{Kind: "unknown", Name: "X", Line: 1})
+	if ok {
+		t.Error("expected unknown kind to return false")
+	}
+}
+
 func TestFind_EmptyInput(t *testing.T) {
 	if got := Find(nil); got != nil {
 		t.Errorf("expected nil for nil input; got %+v", got)

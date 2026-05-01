@@ -66,7 +66,7 @@ func filterFiles(files []inventory.File, opts Options) []inventory.File {
 				out = append(out, f)
 			}
 		case inventory.RoleOrphan:
-			if opts.IncludeOrphans && isZshOrphan(f.Path, opts.IncludeBash) {
+			if opts.IncludeOrphans && isShellOrphan(f.Path, opts.IncludeBash) {
 				out = append(out, f)
 			}
 		}
@@ -74,13 +74,13 @@ func filterFiles(files []inventory.File, opts Options) []inventory.File {
 	return out
 }
 
-func isZshOrphan(path string, includeBash bool) bool {
+func isShellOrphan(path string, includeBash bool) bool {
 	name := filepath.Base(path)
-	if strings.Contains(name, "zsh") || strings.HasPrefix(name, ".zsh") || strings.HasPrefix(name, ".zprofile") || strings.HasPrefix(name, ".zlog") {
+	if strings.Contains(name, "zsh") || strings.HasPrefix(name, ".zprofile") || strings.HasPrefix(name, ".zlog") {
 		return true
 	}
 	if includeBash {
-		return true
+		return strings.Contains(name, "bash") || strings.HasPrefix(name, ".profile")
 	}
 	return false
 }

@@ -123,6 +123,26 @@ func TestClean_PropagatesProcessError(t *testing.T) {
 	}
 }
 
+func TestShouldKeepBlock_MultiLineWithCommentedCode(t *testing.T) {
+	block := []lineInfo{
+		{isComment: true, inner: ""},
+		{isComment: true, inner: "export FOO=bar"},
+	}
+	if shouldKeepBlock(block) {
+		t.Error("block containing commented-out code should be stripped")
+	}
+}
+
+func TestShouldKeepBlock_MultiLineProseNoLabel(t *testing.T) {
+	block := []lineInfo{
+		{isComment: true, inner: "If you come from bash you might have to change things."},
+		{isComment: true, inner: "This is another long explanation that is definitely prose."},
+	}
+	if shouldKeepBlock(block) {
+		t.Error("multi-line prose without a label should be stripped")
+	}
+}
+
 func TestIsCommentedCode(t *testing.T) {
 	cases := map[string]bool{
 		`export FOO=bar`:                     true,

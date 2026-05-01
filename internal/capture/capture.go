@@ -20,7 +20,9 @@ const traceTimeout = 30 * time.Second
 var CurrentEnv = currentEnv
 
 func currentEnv() (map[string]string, error) {
-	out, err := exec.Command("env", "-0").Output()
+	ctx, cancel := context.WithTimeout(context.Background(), traceTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "env", "-0").Output()
 	if err != nil {
 		return nil, fmt.Errorf("env -0: %w", err)
 	}

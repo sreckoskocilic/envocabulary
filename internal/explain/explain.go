@@ -105,9 +105,12 @@ func EmitText(w io.Writer, r Result, showValues bool) {
 func EmitJSON(w io.Writer, r Result, showValues bool) error {
 	if !showValues {
 		r.Value = ""
-		for i := range r.Writers {
-			r.Writers[i].Raw = ""
+		writers := make([]model.TraceEntry, len(r.Writers))
+		copy(writers, r.Writers)
+		for i := range writers {
+			writers[i].Raw = ""
 		}
+		r.Writers = writers
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")

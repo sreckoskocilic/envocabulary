@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -661,12 +662,23 @@ func filterFiles(files []inventory.File, bash, orphans bool) []inventory.File {
 				keep = append(keep, f)
 			}
 		case inventory.RoleOrphan:
-			if orphans {
+			if orphans && isShellOrphan(f.Path, bash) {
 				keep = append(keep, f)
 			}
 		}
 	}
 	return keep
+}
+
+func isShellOrphan(path string, includeBash bool) bool {
+	name := filepath.Base(path)
+	if strings.Contains(name, "zsh") || strings.HasPrefix(name, ".zprofile") || strings.HasPrefix(name, ".zlog") {
+		return true
+	}
+	if includeBash {
+		return strings.Contains(name, "bash") || strings.HasPrefix(name, ".profile")
+	}
+	return false
 }
 
 func die(stderr io.Writer, err error) int {

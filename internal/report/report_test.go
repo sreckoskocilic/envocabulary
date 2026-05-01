@@ -147,6 +147,21 @@ func TestBuildDanglingSource(t *testing.T) {
 	}
 }
 
+func TestBuildDanglingSourceDefinition(t *testing.T) {
+	files := []inventory.File{
+		{Path: "/home/u/.zshrc", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{
+			{Kind: inventory.KindSource, Name: "/nonexistent/file.zsh", Line: 5, Value: "/nonexistent/file.zsh"},
+		}},
+	}
+	r := Build(files)
+	if len(r.Dangling) != 1 {
+		t.Fatalf("expected 1 dangling, got %d", len(r.Dangling))
+	}
+	if !strings.Contains(r.Dangling[0].Definition, "/nonexistent/file.zsh") {
+		t.Errorf("source definition should contain path; got %q", r.Dangling[0].Definition)
+	}
+}
+
 func TestBuildDanglingExportNoValue(t *testing.T) {
 	files := []inventory.File{
 		{Path: "/home/u/.zprofile", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{

@@ -778,6 +778,68 @@ func TestEmitLostText(t *testing.T) {
 	}
 }
 
+func TestRunScan_JSONEncodeError(t *testing.T) {
+	stubCurrentEnv(t, map[string]string{"FOO": "bar"}, nil)
+	w := &limitWriter{limit: 5}
+	var stderr bytes.Buffer
+	code := runScan([]string{"--json"}, w, &stderr)
+	if code != 1 {
+		t.Errorf("expected 1 for encode error, got %d", code)
+	}
+}
+
+func TestRunReport_CreateFileError(t *testing.T) {
+	setupFakeShellHome(t, map[string]string{".zshrc": "export FOO=1\n"})
+	t.Chdir(t.TempDir())
+
+	orig := createReportFile
+	t.Cleanup(func() { createReportFile = orig })
+	createReportFile = func(name string) (io.WriteCloser, error) {
+		return nil, errors.New("mock create error")
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := runReport([]string{"--html"}, &stdout, &stderr)
+	if code != 1 {
+		t.Errorf("expected 1, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "mock create error") {
+		t.Errorf("expected create error on stderr; got %q", stderr.String())
+	}
+}
+
+func TestRunReport_WriteHTMLError(t *testing.T) {
+	setupFakeShellHome(t, map[string]string{".zshrc": "export FOO=1\n"})
+	t.Chdir(t.TempDir())
+
+	orig := createReportFile
+	t.Cleanup(func() { createReportFile = orig })
+	createReportFile = func(name string) (io.WriteCloser, error) {
+		return &limitWriteCloser{limit: 10}, nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := runReport([]string{"--html"}, &stdout, &stderr)
+	if code != 1 {
+		t.Errorf("expected 1, got %d", code)
+	}
+}
+
+type limitWriteCloser struct {
+	written int
+	limit   int
+}
+
+func (w *limitWriteCloser) Write(p []byte) (int, error) {
+	if w.written+len(p) > w.limit {
+		return 0, errors.New("write limit exceeded")
+	}
+	w.written += len(p)
+	return len(p), nil
+}
+
+func (w *limitWriteCloser) Close() error { return nil }
+
 func TestRunReport_TextDefault(t *testing.T) {
 	setupFakeShellHome(t, map[string]string{
 		".zprofile": "export EDITOR=nvim\n",
@@ -855,6 +917,81 @@ func TestRun_DispatchToReport(t *testing.T) {
 	if !strings.Contains(stdout.String(), "SAFE TO DELETE") {
 		t.Errorf("expected report output; got:\n%s", stdout.String())
 	}
+}
+
+func TestIsShellOrphan(t *testing.T) {
+	cases := []struct {
+		name        string
+		path        string
+		includeBash bool
+		want        bool
+	}{
+		{"zsh in name", "/u/.zshrc.backup", false, true},
+		{".zprofile prefix", "/u/.zprofile_old", false, true},
+		{".zlog prefix", "/u/.zlogin.bak", false, true},
+		{"bashrc without --bash", "/u/.bashrc.backup", false, false},
+		{"bashrc with --bash", "/u/.bashrc.backup", true, true},
+		{".profile with --bash", "/u/.profile.bak", true, true},
+		{".profile without --bash", "/u/.profile.bak", false, false},
+		{"random file", "/u/.foo.bak", false, false},
+		{"random file with --bash", "/u/.foo.bak", true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isShellOrphan(tc.path, tc.includeBash); got != tc.want {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFilterFiles(t *testing.T) {
+	files := []inventory.File{
+		{Path: "/u/.zshrc", Role: inventory.RoleCanonicalZsh},
+		{Path: "/u/.bashrc", Role: inventory.RoleCanonicalBash},
+		{Path: "/u/.zshrc.backup", Role: inventory.RoleOrphan},
+		{Path: "/u/.bashrc.old", Role: inventory.RoleOrphan},
+		{Path: "/u/.foo.bak", Role: inventory.RoleOrphan},
+	}
+
+	t.Run("zsh only", func(t *testing.T) {
+		got := filterFiles(files, false, false)
+		if len(got) != 1 || got[0].Path != "/u/.zshrc" {
+			t.Errorf("expected only canonical zsh, got %+v", got)
+		}
+	})
+
+	t.Run("with bash", func(t *testing.T) {
+		got := filterFiles(files, true, false)
+		if len(got) != 2 {
+			t.Errorf("expected zsh + bash canonical, got %d", len(got))
+		}
+	})
+
+	t.Run("orphans filters by shell family", func(t *testing.T) {
+		got := filterFiles(files, false, true)
+		for _, f := range got {
+			if f.Path == "/u/.bashrc.old" || f.Path == "/u/.foo.bak" {
+				t.Errorf("non-zsh orphan %s should be excluded; got %+v", f.Path, got)
+			}
+		}
+	})
+
+	t.Run("bash orphans included with --bash", func(t *testing.T) {
+		got := filterFiles(files, true, true)
+		hasBash := false
+		for _, f := range got {
+			if f.Path == "/u/.bashrc.old" {
+				hasBash = true
+			}
+			if f.Path == "/u/.foo.bak" {
+				t.Errorf("non-shell orphan should still be excluded; got %+v", got)
+			}
+		}
+		if !hasBash {
+			t.Errorf("expected bash orphan with --bash --orphans; got %+v", got)
+		}
+	})
 }
 
 func stubDiscoverError(t *testing.T) {
@@ -1015,6 +1152,83 @@ func TestRunScan_JSONOutput(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Errorf("invalid JSON: %v", err)
 	}
+}
+
+func TestRun_DispatchToScan(t *testing.T) {
+	stubCurrentEnv(t, map[string]string{"FOO": "bar"}, nil)
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"scan"}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("expected 0; got %d; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "FOO") {
+		t.Errorf("expected FOO in scan output; got:\n%s", stdout.String())
+	}
+}
+
+func TestRun_DispatchToExplain(t *testing.T) {
+	stubCurrentEnv(t, map[string]string{"EDITOR": "vim"}, nil)
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"explain", "EDITOR"}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("expected 0; got %d; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "EDITOR") {
+		t.Errorf("expected EDITOR in explain output; got:\n%s", stdout.String())
+	}
+}
+
+func TestRunCatalog_DiscoverError(t *testing.T) {
+	stubDiscoverError(t)
+	var stdout, stderr bytes.Buffer
+	code := runCatalog(nil, &stdout, &stderr)
+	if code != 1 {
+		t.Errorf("expected 1, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "mock discover error") {
+		t.Errorf("expected error on stderr; got %q", stderr.String())
+	}
+}
+
+func TestRunScan_TraceWarning(t *testing.T) {
+	stubCurrentEnv(t, map[string]string{"FOO": "bar"}, nil)
+	var stdout, stderr bytes.Buffer
+	code := runScan([]string{"--shell", "zsh"}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("expected 0, got %d", code)
+	}
+}
+
+func TestRunExplain_TraceWarning(t *testing.T) {
+	stubCurrentEnv(t, map[string]string{"EDITOR": "vim"}, nil)
+	var stdout, stderr bytes.Buffer
+	code := runExplain([]string{"EDITOR"}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("expected 0, got %d", code)
+	}
+}
+
+func TestRunExplain_JSONOutput_EncodeError(t *testing.T) {
+	stubCurrentEnv(t, map[string]string{"FOO": "bar"}, nil)
+	w := &limitWriter{limit: 5}
+	var stderr bytes.Buffer
+	code := runExplain([]string{"--json", "FOO"}, w, &stderr)
+	if code != 1 {
+		t.Errorf("expected 1 for encode error, got %d", code)
+	}
+}
+
+type limitWriter struct {
+	written int
+	limit   int
+}
+
+func (w *limitWriter) Write(p []byte) (int, error) {
+	if w.written+len(p) > w.limit {
+		return 0, errors.New("write limit exceeded")
+	}
+	w.written += len(p)
+	return len(p), nil
 }
 
 func TestRunExplain_FlagParseError(t *testing.T) {

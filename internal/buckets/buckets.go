@@ -1,11 +1,15 @@
 package buckets
 
 import (
+	"context"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/sreckoskocilic/envocabulary/internal/model"
 )
+
+const launchctlTimeout = 3 * time.Second
 
 var terminalVars = map[string]bool{
 	"TERM":                    true,
@@ -96,7 +100,9 @@ func Classify(name, value string) (origin model.Origin, source string) {
 	if shellManagedVars[name] {
 		return model.OriginSystem, "shell-managed"
 	}
-	if out, err := exec.Command("launchctl", "getenv", name).Output(); err == nil {
+	ctx, cancel := context.WithTimeout(context.Background(), launchctlTimeout)
+	defer cancel()
+	if out, err := exec.CommandContext(ctx, "launchctl", "getenv", name).Output(); err == nil {
 		if strings.TrimRight(string(out), "\n") == value {
 			return model.OriginLaunchd, "launchctl setenv"
 		}

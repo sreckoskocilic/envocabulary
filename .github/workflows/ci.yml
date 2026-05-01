@@ -32,16 +32,14 @@ jobs:
       - run: go vet ./...
       - name: Run tests with coverage
         run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
-      - name: Coverage threshold gate (testable surface, matches codecov badge)
+      - name: Coverage threshold gate
         run: |
-          grep -v '/external\.go:\|_external\.go:' coverage.out > coverage.gated.out
-          full=$(go tool cover -func=coverage.out | awk '/total:/ {gsub(/%/,"",$3); print $3}')
-          gated=$(go tool cover -func=coverage.gated.out | awk '/total:/ {gsub(/%/,"",$3); print $3}')
-          echo "Coverage — full (incl. *_external.go): ${full}% | gated (testable surface): ${gated}%"
-          if awk -v g=$gated -v m=95 'BEGIN { exit (g+0 < m+0) ? 1 : 0 }'; then
-            echo "✓ gated coverage ${gated}% meets minimum 95%"
+          cov=$(go tool cover -func=coverage.out | awk '/total:/ {gsub(/%/,"",$3); print $3}')
+          echo "Coverage: ${cov}%"
+          if awk -v c=$cov -v m=95 'BEGIN { exit (c+0 < m+0) ? 1 : 0 }'; then
+            echo "✓ coverage ${cov}% meets minimum 95%"
           else
-            echo "✗ gated coverage ${gated}% is below minimum 95%"
+            echo "✗ coverage ${cov}% is below minimum 95%"
             exit 1
           fi
       - name: Upload coverage to Codecov

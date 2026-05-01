@@ -35,7 +35,7 @@ func TestRoleOrder(t *testing.T) {
 	}
 }
 
-func TestIsZshOrphan(t *testing.T) {
+func TestIsShellOrphan(t *testing.T) {
 	cases := []struct {
 		name        string
 		path        string
@@ -43,16 +43,18 @@ func TestIsZshOrphan(t *testing.T) {
 		want        bool
 	}{
 		{"zsh in name", "/u/.zshrc.backup", false, true},
-		{".zsh prefix", "/u/.zshrc.old", false, true},
 		{".zprofile prefix", "/u/.zprofile_old", false, true},
 		{".zlog prefix", "/u/.zlogin.bak", false, true},
 		{"bashrc without --bash", "/u/.bashrc.backup", false, false},
 		{"bashrc with --bash", "/u/.bashrc.backup", true, true},
+		{".profile with --bash", "/u/.profile.bak", true, true},
+		{".profile without --bash", "/u/.profile.bak", false, false},
 		{"random file", "/u/.foo.bak", false, false},
+		{"random file with --bash", "/u/.foo.bak", true, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := isZshOrphan(tc.path, tc.includeBash); got != tc.want {
+			if got := isShellOrphan(tc.path, tc.includeBash); got != tc.want {
 				t.Errorf("got %v, want %v", got, tc.want)
 			}
 		})
@@ -177,6 +179,36 @@ func TestWriteFile_MissingFile(t *testing.T) {
 	}
 	if buf.Len() != 0 {
 		t.Errorf("expected no output for missing file; got:\n%s", buf.String())
+	}
+}
+
+func TestWriteFile_OrphanSuffix(t *testing.T) {
+	dir := t.TempDir()
+	rc := filepath.Join(dir, ".zshrc.old")
+	if err := os.WriteFile(rc, []byte("export X=1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := writeFile(&buf, inventory.File{Path: rc, Role: inventory.RoleOrphan}, Options{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "(orphan)") {
+		t.Errorf("expected orphan suffix in banner; got:\n%s", buf.String())
+	}
+}
+
+func TestWriteFile_BashSuffix(t *testing.T) {
+	dir := t.TempDir()
+	rc := filepath.Join(dir, ".bashrc")
+	if err := os.WriteFile(rc, []byte("export X=1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := writeFile(&buf, inventory.File{Path: rc, Role: inventory.RoleCanonicalBash}, Options{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "(bash)") {
+		t.Errorf("expected bash suffix in banner; got:\n%s", buf.String())
 	}
 }
 
