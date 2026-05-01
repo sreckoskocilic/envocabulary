@@ -20,25 +20,19 @@ test-linux:  ## Run tests inside a Linux Docker container (requires Docker)
 	docker run --rm -v "$$PWD":/src -w /src golang:1.24 \
 		sh -c 'apt-get update -qq && apt-get install -y -qq zsh >/dev/null 2>&1 && go test -race ./...'
 
-cover:  ## Run tests with coverage; gate on testable surface (excludes *_external.go)
+cover:  ## Run tests with coverage
 	@$(GO) test -race -covermode=atomic -coverprofile=$(COVERAGE_FILE) $(PKGS) > /dev/null
-	@grep -v '/external\.go:\|_external\.go:' $(COVERAGE_FILE) > $(COVERAGE_FILE).gated
-	@full=$$($(GO) tool cover -func=$(COVERAGE_FILE) | awk '/total:/ {gsub(/%/,"",$$3); print $$3}'); \
-		gated=$$($(GO) tool cover -func=$(COVERAGE_FILE).gated | awk '/total:/ {gsub(/%/,"",$$3); print $$3}'); \
-		echo "Coverage:"; \
-		echo "  full   (engineering truth, includes *_external.go):  $$full%"; \
-		echo "  gated  (testable surface, matches codecov badge):    $$gated%"; \
+	@cov=$$($(GO) tool cover -func=$(COVERAGE_FILE) | awk '/total:/ {gsub(/%/,"",$$3); print $$3}'); \
+		echo "Coverage: $$cov%"; \
 		echo ""; \
-		if awk -v g=$$gated -v m=$(COVERAGE_MIN) 'BEGIN { exit (g+0 < m+0) ? 1 : 0 }'; then \
-			echo "✓ gated coverage $$gated% meets minimum $(COVERAGE_MIN)%"; \
+		if awk -v c=$$cov -v m=$(COVERAGE_MIN) 'BEGIN { exit (c+0 < m+0) ? 1 : 0 }'; then \
+			echo "✓ coverage $$cov% meets minimum $(COVERAGE_MIN)%"; \
 		else \
-			echo "✗ gated coverage $$gated% is below minimum $(COVERAGE_MIN)%"; \
-			rm -f $(COVERAGE_FILE).gated; \
+			echo "✗ coverage $$cov% is below minimum $(COVERAGE_MIN)%"; \
 			exit 1; \
 		fi
-	@rm -f $(COVERAGE_FILE).gated
 
-cover-html: cover  ## Generate HTML coverage report (full picture, includes *_external.go)
+cover-html: cover  ## Generate HTML coverage report
 	@$(GO) tool cover -html=$(COVERAGE_FILE) -o coverage.html
 	@echo "Open coverage.html in your browser to inspect line-by-line coverage."
 

@@ -2,6 +2,7 @@ package report
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -185,5 +186,34 @@ func TestWriteHTMLEmptySections(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "none") {
 		t.Error("expected 'none' for empty sections in HTML")
+	}
+}
+
+func TestTildePath(t *testing.T) {
+	orig := userHomeDir
+	t.Cleanup(func() { userHomeDir = orig })
+	userHomeDir = func() (string, error) { return "/home/u", nil }
+
+	cases := []struct {
+		in, want string
+	}{
+		{"/home/u", "~"},
+		{"/home/u/foo", "~/foo"},
+		{"/other/path", "/other/path"},
+	}
+	for _, tc := range cases {
+		if got := tildePath(tc.in); got != tc.want {
+			t.Errorf("tildePath(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestTildePath_HomeDirError(t *testing.T) {
+	orig := userHomeDir
+	t.Cleanup(func() { userHomeDir = orig })
+	userHomeDir = func() (string, error) { return "", errors.New("no home") }
+
+	if got := tildePath("/some/path"); got != "/some/path" {
+		t.Errorf("expected fallback to raw path; got %q", got)
 	}
 }

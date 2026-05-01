@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sreckoskocilic/envocabulary/internal/capture"
 	"github.com/sreckoskocilic/envocabulary/internal/dangling"
 	"github.com/sreckoskocilic/envocabulary/internal/dedup"
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
@@ -302,7 +303,7 @@ func setupFakeShellHome(t *testing.T, files map[string]string) {
 		}
 	}
 	t.Setenv("HOME", dir)
-	t.Setenv("ZDOTDIR", dir)
+
 }
 
 func TestRunInventory_BasicCanonicalZsh(t *testing.T) {
@@ -923,5 +924,146 @@ func TestRunReport_DiscoverError(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "mock discover error") {
 		t.Errorf("expected error on stderr; got %q", stderr.String())
+	}
+}
+
+type failCloser struct{ bytes.Buffer }
+
+func (f *failCloser) Close() error { return errors.New("mock close error") }
+
+func TestRunReport_HTMLCloseError(t *testing.T) {
+	setupFakeShellHome(t, map[string]string{
+		".zshrc": "export FOO=1\n",
+	})
+	t.Chdir(t.TempDir())
+
+	orig := createReportFile
+	t.Cleanup(func() { createReportFile = orig })
+	createReportFile = func(name string) (io.WriteCloser, error) {
+		return &failCloser{}, nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := runReport([]string{"--html"}, &stdout, &stderr)
+	if code != 1 {
+		t.Errorf("expected 1, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "mock close error") {
+		t.Errorf("expected close error on stderr; got %q", stderr.String())
+	}
+}
+
+func stubCurrentEnv(t *testing.T, env map[string]string, err error) {
+	t.Helper()
+	orig := capture.CurrentEnv
+	t.Cleanup(func() { capture.CurrentEnv = orig })
+	capture.CurrentEnv = func() (map[string]string, error) {
+		return env, err
+	}
+}
+
+func TestRunScan_FlagParseError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runScan([]string{"--bogus"}, &stdout, &stderr)
+	if code != 2 {
+		t.Errorf("expected 2, got %d", code)
+	}
+}
+
+func TestRunScan_BadShellFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runScan([]string{"--shell", "fish"}, &stdout, &stderr)
+	if code != 2 {
+		t.Errorf("expected 2, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "unsupported shell") {
+		t.Errorf("expected unsupported shell error; got %q", stderr.String())
+	}
+}
+
+func TestRunScan_CurrentEnvError(t *testing.T) {
+	stubCurrentEnv(t, nil, errors.New("mock env error"))
+	var stdout, stderr bytes.Buffer
+	code := runScan(nil, &stdout, &stderr)
+	if code != 1 {
+		t.Errorf("expected 1, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "mock env error") {
+		t.Errorf("expected error; got %q", stderr.String())
+	}
+}
+
+func TestRunScan_TextOutput(t *testing.T) {
+	stubCurrentEnv(t, map[string]string{"FOO": "bar", "HOME": "/tmp"}, nil)
+	var stdout, stderr bytes.Buffer
+	code := runScan(nil, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("expected 0, got %d; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "FOO") {
+		t.Errorf("expected FOO in output; got:\n%s", stdout.String())
+	}
+}
+
+func TestRunScan_JSONOutput(t *testing.T) {
+	stubCurrentEnv(t, map[string]string{"FOO": "bar"}, nil)
+	var stdout, stderr bytes.Buffer
+	code := runScan([]string{"--json"}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("expected 0, got %d; stderr: %s", code, stderr.String())
+	}
+	var result []map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Errorf("invalid JSON: %v", err)
+	}
+}
+
+func TestRunExplain_FlagParseError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runExplain([]string{"--bogus"}, &stdout, &stderr)
+	if code != 2 {
+		t.Errorf("expected 2, got %d", code)
+	}
+}
+
+func TestRunExplain_BadShellFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runExplain([]string{"--shell", "fish", "FOO"}, &stdout, &stderr)
+	if code != 2 {
+		t.Errorf("expected 2, got %d", code)
+	}
+}
+
+func TestRunExplain_CurrentEnvError(t *testing.T) {
+	stubCurrentEnv(t, nil, errors.New("mock env error"))
+	var stdout, stderr bytes.Buffer
+	code := runExplain([]string{"FOO"}, &stdout, &stderr)
+	if code != 1 {
+		t.Errorf("expected 1, got %d", code)
+	}
+}
+
+func TestRunExplain_TextOutput(t *testing.T) {
+	stubCurrentEnv(t, map[string]string{"EDITOR": "vim"}, nil)
+	var stdout, stderr bytes.Buffer
+	code := runExplain([]string{"EDITOR"}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("expected 0, got %d; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "EDITOR") {
+		t.Errorf("expected EDITOR in output; got:\n%s", stdout.String())
+	}
+}
+
+func TestRunExplain_JSONOutput(t *testing.T) {
+	stubCurrentEnv(t, map[string]string{"EDITOR": "vim"}, nil)
+	var stdout, stderr bytes.Buffer
+	code := runExplain([]string{"--json", "EDITOR"}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("expected 0, got %d; stderr: %s", code, stderr.String())
+	}
+	var result map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Errorf("invalid JSON: %v", err)
 	}
 }

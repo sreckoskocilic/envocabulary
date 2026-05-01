@@ -62,16 +62,12 @@ func discover() ([]File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("home directory: %w", err)
 	}
-	zdot := os.Getenv("ZDOTDIR")
-	if zdot == "" {
-		zdot = home
-	}
 
 	files := make([]File, 0, len(canonicalZshNames)+len(canonicalBashNames))
 	seen := map[string]bool{}
 
 	for _, n := range canonicalZshNames {
-		p := filepath.Join(zdot, n)
+		p := filepath.Join(home, n)
 		if _, err := os.Stat(p); err == nil {
 			files = append(files, parseFile(p, RoleCanonicalZsh))
 			seen[p] = true
@@ -79,9 +75,6 @@ func discover() ([]File, error) {
 	}
 	for _, n := range canonicalBashNames {
 		p := filepath.Join(home, n)
-		if seen[p] {
-			continue
-		}
 		if _, err := os.Stat(p); err == nil {
 			files = append(files, parseFile(p, RoleCanonicalBash))
 			seen[p] = true
@@ -90,11 +83,6 @@ func discover() ([]File, error) {
 
 	for _, p := range scanOrphans(home, seen) {
 		files = append(files, parseFile(p, RoleOrphan))
-	}
-	if zdot != home {
-		for _, p := range scanOrphans(zdot, seen) {
-			files = append(files, parseFile(p, RoleOrphan))
-		}
 	}
 	return files, nil
 }

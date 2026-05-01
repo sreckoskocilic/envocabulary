@@ -41,6 +41,9 @@ func TestExpand_Tilde(t *testing.T) {
 	if got := expand("/abs/path"); got != "/abs/path" {
 		t.Errorf("expand(/abs/path) = %q, want %q", got, "/abs/path")
 	}
+	if got := expand("~otheruser/foo"); got != "" {
+		t.Errorf("expand(~otheruser/foo) = %q, want empty (unresolvable)", got)
+	}
 }
 
 func TestFind_SourceSkipsVarExpansion(t *testing.T) {

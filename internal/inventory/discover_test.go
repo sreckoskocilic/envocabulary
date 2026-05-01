@@ -19,7 +19,6 @@ func setupHome(t *testing.T, files map[string]string) string {
 		}
 	}
 	t.Setenv("HOME", dir)
-	t.Setenv("ZDOTDIR", dir)
 	return dir
 }
 
@@ -95,63 +94,6 @@ func TestDiscover_FindsOrphans(t *testing.T) {
 	}
 }
 
-func TestDiscover_ZDOTDIRSeparateFromHome(t *testing.T) {
-	home := t.TempDir()
-	zdot := t.TempDir()
-	if err := os.WriteFile(filepath.Join(zdot, ".zshrc"), []byte("export X=1\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(home, ".bashrc"), []byte("export Y=1\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("HOME", home)
-	t.Setenv("ZDOTDIR", zdot)
-
-	got, _ := Discover()
-	found := paths(got)
-	if !slices.Contains(found, ".zshrc") {
-		t.Errorf("expected .zshrc from ZDOTDIR; got %v", found)
-	}
-	if !slices.Contains(found, ".bashrc") {
-		t.Errorf("expected .bashrc from HOME; got %v", found)
-	}
-}
-
-func TestDiscover_OrphansFromBothHomeAndZDOTDIR(t *testing.T) {
-	home := t.TempDir()
-	zdot := t.TempDir()
-	if err := os.WriteFile(filepath.Join(home, ".bashrc.old"), []byte("# old\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(zdot, ".zshrc.backup"), []byte("# bak\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("HOME", home)
-	t.Setenv("ZDOTDIR", zdot)
-
-	got, _ := Discover()
-	found := paths(got)
-	if !slices.Contains(found, ".bashrc.old") || !slices.Contains(found, ".zshrc.backup") {
-		t.Errorf("expected orphans from both dirs; got %v", found)
-	}
-}
-
-func TestDiscover_DeduplicatesWhenZDOTDIREqualsHome(t *testing.T) {
-	dir := setupHome(t, map[string]string{".zshrc": "export X=1\n"})
-	t.Setenv("HOME", dir)
-	t.Setenv("ZDOTDIR", dir)
-
-	got, _ := Discover()
-	count := 0
-	for _, f := range got {
-		if filepath.Base(f.Path) == ".zshrc" {
-			count++
-		}
-	}
-	if count != 1 {
-		t.Errorf("expected .zshrc to appear exactly once; got %d", count)
-	}
-}
 
 func TestParseFile_Success(t *testing.T) {
 	dir := t.TempDir()

@@ -2,6 +2,7 @@ package report
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -10,6 +11,19 @@ import (
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
 	"github.com/sreckoskocilic/envocabulary/internal/lost"
 )
+
+var userHomeDir = os.UserHomeDir
+
+func tildePath(path string) string {
+	home, err := userHomeDir()
+	if err != nil {
+		return path
+	}
+	if path == home || strings.HasPrefix(path, home+"/") {
+		return "~" + path[len(home):]
+	}
+	return path
+}
 
 type Entry struct {
 	Definition  string

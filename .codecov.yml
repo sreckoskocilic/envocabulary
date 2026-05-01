@@ -11,6 +11,3 @@ coverage:
 comment:
   layout: "false"
 
-ignore:
-  - "internal/capture/external.go"   # subprocess wrappers (env -0, zsh xtrace)
-  - "cmd/envocabulary/external.go"   # CLI entry points that spawn subprocesses
