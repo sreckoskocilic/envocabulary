@@ -3,7 +3,7 @@ package inventory
 import (
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -27,13 +27,13 @@ func paths(files []File) []string {
 	for _, f := range files {
 		out = append(out, filepath.Base(f.Path))
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
 func TestDiscover_EmptyHome(t *testing.T) {
 	setupHome(t, nil)
-	got := Discover()
+	got, _ := Discover()
 	if len(got) != 0 {
 		t.Errorf("expected 0 files in empty dir, got %d: %v", len(got), paths(got))
 	}
@@ -46,7 +46,7 @@ func TestDiscover_FindsCanonicalZsh(t *testing.T) {
 		".bashrc":       "export Z=3\n",
 		".bash_profile": "export W=4\n",
 	})
-	got := Discover()
+	got, _ := Discover()
 	wantNames := map[string]Role{
 		".zshrc":        RoleCanonicalZsh,
 		".zshenv":       RoleCanonicalZsh,
@@ -63,7 +63,7 @@ func TestDiscover_FindsCanonicalZsh(t *testing.T) {
 	}
 	found := paths(got)
 	for n := range wantNames {
-		if !contains(found, n) {
+		if !slices.Contains(found, n) {
 			t.Errorf("missing canonical file %s; got %v", n, found)
 		}
 	}
@@ -79,17 +79,17 @@ func TestDiscover_FindsOrphans(t *testing.T) {
 		".gitconfig":      "[user]\n",
 		".zshrcsomething": "noise\n",
 	})
-	got := Discover()
+	got, _ := Discover()
 	found := paths(got)
 	for _, name := range []string{".zshrc.backup", ".zshrc.old", ".zshrc_2023", ".bashrc.bak"} {
-		if !contains(found, name) {
+		if !slices.Contains(found, name) {
 			t.Errorf("expected orphan %s in discovery; got %v", name, found)
 		}
 	}
-	if contains(found, ".gitconfig") {
+	if slices.Contains(found, ".gitconfig") {
 		t.Errorf("non-shell file .gitconfig should not be discovered; got %v", found)
 	}
-	if contains(found, ".zshrcsomething") {
+	if slices.Contains(found, ".zshrcsomething") {
 		t.Errorf("prefix-collision .zshrcsomething should not be discovered; got %v", found)
 	}
 }
@@ -106,12 +106,12 @@ func TestDiscover_ZDOTDIRSeparateFromHome(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("ZDOTDIR", zdot)
 
-	got := Discover()
+	got, _ := Discover()
 	found := paths(got)
-	if !contains(found, ".zshrc") {
+	if !slices.Contains(found, ".zshrc") {
 		t.Errorf("expected .zshrc from ZDOTDIR; got %v", found)
 	}
-	if !contains(found, ".bashrc") {
+	if !slices.Contains(found, ".bashrc") {
 		t.Errorf("expected .bashrc from HOME; got %v", found)
 	}
 }
@@ -128,9 +128,9 @@ func TestDiscover_OrphansFromBothHomeAndZDOTDIR(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("ZDOTDIR", zdot)
 
-	got := Discover()
+	got, _ := Discover()
 	found := paths(got)
-	if !contains(found, ".bashrc.old") || !contains(found, ".zshrc.backup") {
+	if !slices.Contains(found, ".bashrc.old") || !slices.Contains(found, ".zshrc.backup") {
 		t.Errorf("expected orphans from both dirs; got %v", found)
 	}
 }
@@ -140,7 +140,7 @@ func TestDiscover_DeduplicatesWhenZDOTDIREqualsHome(t *testing.T) {
 	t.Setenv("HOME", dir)
 	t.Setenv("ZDOTDIR", dir)
 
-	got := Discover()
+	got, _ := Discover()
 	count := 0
 	for _, f := range got {
 		if filepath.Base(f.Path) == ".zshrc" {
@@ -230,13 +230,4 @@ func TestIsCanonical(t *testing.T) {
 			t.Errorf("isCanonical(%q) = %v, want %v", in, got, want)
 		}
 	}
-}
-
-func contains(haystack []string, needle string) bool {
-	for _, s := range haystack {
-		if s == needle {
-			return true
-		}
-	}
-	return false
 }

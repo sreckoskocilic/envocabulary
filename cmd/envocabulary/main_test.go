@@ -801,9 +801,7 @@ func TestRunReport_HTML(t *testing.T) {
 		".zshrc": "export FOO=1\n",
 	})
 	dir := t.TempDir()
-	origDir, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(origDir)
+	t.Chdir(dir)
 
 	var stdout, stderr bytes.Buffer
 	code := runReport([]string{"--html"}, &stdout, &stderr)

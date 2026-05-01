@@ -2,11 +2,12 @@ package inventory
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -52,10 +53,10 @@ var orphanPrefixes = []string{
 	".bashrc", ".bash_profile", ".profile",
 }
 
-func Discover() []File {
+func Discover() ([]File, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("home directory: %w", err)
 	}
 	zdot := os.Getenv("ZDOTDIR")
 	if zdot == "" {
@@ -91,7 +92,7 @@ func Discover() []File {
 			files = append(files, parseFile(p, RoleOrphan))
 		}
 	}
-	return files
+	return files, nil
 }
 
 func scanOrphans(dir string, seen map[string]bool) []string {
@@ -118,7 +119,7 @@ func scanOrphans(dir string, seen map[string]bool) []string {
 		seen[p] = true
 		out = append(out, p)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 

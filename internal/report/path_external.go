@@ -11,7 +11,7 @@ func tildePath(path string) string {
 	if err != nil {
 		return path
 	}
-	if strings.HasPrefix(path, home) {
+	if path == home || strings.HasPrefix(path, home+"/") {
 		return "~" + path[len(home):]
 	}
 	return path

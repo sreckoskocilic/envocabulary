@@ -1,12 +1,13 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/sreckoskocilic/envocabulary/internal/catalog"
@@ -270,24 +271,13 @@ func runDedup(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	files := inventory.Discover()
-	keep := make([]inventory.File, 0, len(files))
-	for _, f := range files {
-		switch f.Role {
-		case inventory.RoleCanonicalZsh:
-			keep = append(keep, f)
-		case inventory.RoleCanonicalBash:
-			if *bash {
-				keep = append(keep, f)
-			}
-		case inventory.RoleOrphan:
-			if *orphans {
-				keep = append(keep, f)
-			}
-		}
+	files, err := inventory.Discover()
+	if err != nil {
+		return die(stderr, err)
 	}
-	sort.SliceStable(keep, func(i, j int) bool {
-		return dedupFileRank(keep[i]) < dedupFileRank(keep[j])
+	keep := filterFiles(files, *bash, *orphans)
+	slices.SortStableFunc(keep, func(a, b inventory.File) int {
+		return cmp.Compare(dedupFileRank(a), dedupFileRank(b))
 	})
 
 	groups := dedup.Find(keep)
@@ -347,22 +337,11 @@ func runDangling(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	files := inventory.Discover()
-	keep := make([]inventory.File, 0, len(files))
-	for _, f := range files {
-		switch f.Role {
-		case inventory.RoleCanonicalZsh:
-			keep = append(keep, f)
-		case inventory.RoleCanonicalBash:
-			if *bash {
-				keep = append(keep, f)
-			}
-		case inventory.RoleOrphan:
-			if *orphans {
-				keep = append(keep, f)
-			}
-		}
+	files, err := inventory.Discover()
+	if err != nil {
+		return die(stderr, err)
 	}
+	keep := filterFiles(files, *bash, *orphans)
 
 	findings := dangling.Find(keep)
 	if len(findings) == 0 {
@@ -413,20 +392,11 @@ func runLost(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	files := inventory.Discover()
-	keep := make([]inventory.File, 0, len(files))
-	for _, f := range files {
-		switch f.Role {
-		case inventory.RoleCanonicalZsh:
-			keep = append(keep, f)
-		case inventory.RoleCanonicalBash:
-			if *bash {
-				keep = append(keep, f)
-			}
-		case inventory.RoleOrphan:
-			keep = append(keep, f)
-		}
+	files, err := inventory.Discover()
+	if err != nil {
+		return die(stderr, err)
 	}
+	keep := filterFiles(files, *bash, true)
 
 	findings := lost.Find(keep)
 	if len(findings) == 0 {
@@ -502,7 +472,10 @@ func runInventory(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	files := inventory.Discover()
+	files, err := inventory.Discover()
+	if err != nil {
+		return die(stderr, err)
+	}
 	if len(files) == 0 {
 		fmt.Fprintln(stderr, "no shell config files found")
 		return 0
@@ -639,22 +612,13 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	files := inventory.Discover()
-	keep := make([]inventory.File, 0, len(files))
-	for _, f := range files {
-		switch f.Role {
-		case inventory.RoleCanonicalZsh:
-			keep = append(keep, f)
-		case inventory.RoleCanonicalBash:
-			if *bash {
-				keep = append(keep, f)
-			}
-		case inventory.RoleOrphan:
-			keep = append(keep, f)
-		}
+	files, err := inventory.Discover()
+	if err != nil {
+		return die(stderr, err)
 	}
-	sort.SliceStable(keep, func(i, j int) bool {
-		return dedupFileRank(keep[i]) < dedupFileRank(keep[j])
+	keep := filterFiles(files, *bash, true)
+	slices.SortStableFunc(keep, func(a, b inventory.File) int {
+		return cmp.Compare(dedupFileRank(a), dedupFileRank(b))
 	})
 
 	r := report.Build(keep)
@@ -669,11 +633,33 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 		if err := report.WriteHTML(f, r); err != nil {
 			return die(stderr, err)
 		}
+		if err := f.Close(); err != nil {
+			return die(stderr, err)
+		}
 		fmt.Fprintln(stdout, name)
 		return 0
 	}
 	report.WriteText(stdout, r)
 	return 0
+}
+
+func filterFiles(files []inventory.File, bash, orphans bool) []inventory.File {
+	keep := make([]inventory.File, 0, len(files))
+	for _, f := range files {
+		switch f.Role {
+		case inventory.RoleCanonicalZsh:
+			keep = append(keep, f)
+		case inventory.RoleCanonicalBash:
+			if bash {
+				keep = append(keep, f)
+			}
+		case inventory.RoleOrphan:
+			if orphans {
+				keep = append(keep, f)
+			}
+		}
+	}
+	return keep
 }
 
 func die(stderr io.Writer, err error) int {

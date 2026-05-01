@@ -4,11 +4,15 @@ package capture
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os/exec"
+	"time"
 
 	"github.com/sreckoskocilic/envocabulary/internal/model"
 )
+
+const traceTimeout = 30 * time.Second
 
 func CurrentEnv() (map[string]string, error) {
 	out, err := exec.Command("env", "-0").Output()
@@ -21,7 +25,9 @@ func CurrentEnv() (map[string]string, error) {
 type ZshTracer struct{}
 
 func (ZshTracer) RawTrace() (string, error) {
-	cmd := exec.Command("zsh", "-l", "-i", "-x", "-c", "exit")
+	ctx, cancel := context.WithTimeout(context.Background(), traceTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "zsh", "-l", "-i", "-x", "-c", "exit")
 	cmd.Env = envWithPS4("+%x:%i> ")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -36,7 +42,9 @@ func (ZshTracer) RawTrace() (string, error) {
 type BashTracer struct{}
 
 func (BashTracer) RawTrace() (string, error) {
-	cmd := exec.Command("bash", "-l", "-i", "-x", "-c", "exit")
+	ctx, cancel := context.WithTimeout(context.Background(), traceTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "bash", "-l", "-i", "-x", "-c", "exit")
 	cmd.Env = envWithPS4(`+${BASH_SOURCE}:${LINENO}> `)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

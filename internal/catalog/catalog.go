@@ -2,11 +2,12 @@ package catalog
 
 import (
 	"bufio"
+	"cmp"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/sreckoskocilic/envocabulary/internal/dedup"
@@ -29,10 +30,13 @@ var zshLoginOrder = map[string]int{
 }
 
 func Write(w io.Writer, opts Options) error {
-	files := inventory.Discover()
+	files, err := inventory.Discover()
+	if err != nil {
+		return err
+	}
 	keep := filterFiles(files, opts)
-	sort.SliceStable(keep, func(i, j int) bool {
-		return roleOrder(keep[i]) < roleOrder(keep[j])
+	slices.SortStableFunc(keep, func(a, b inventory.File) int {
+		return cmp.Compare(roleOrder(a), roleOrder(b))
 	})
 
 	var losers map[string]dedup.Occurrence
