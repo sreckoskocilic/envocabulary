@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -227,5 +228,22 @@ func TestWrite_BashGated(t *testing.T) {
 	_ = Write(&bashBuf, Options{IncludeBash: true})
 	if !strings.Contains(bashBuf.String(), ".bashrc") {
 		t.Errorf("with --bash, expected .bashrc in output; got:\n%s", bashBuf.String())
+	}
+}
+
+func TestWrite_DiscoverError(t *testing.T) {
+	orig := inventory.Discover
+	t.Cleanup(func() { inventory.Discover = orig })
+	inventory.Discover = func() ([]inventory.File, error) {
+		return nil, errors.New("mock discover error")
+	}
+
+	var buf bytes.Buffer
+	err := Write(&buf, Options{})
+	if err == nil {
+		t.Fatal("expected error from Write")
+	}
+	if !strings.Contains(err.Error(), "mock discover error") {
+		t.Errorf("expected mock error; got %v", err)
 	}
 }

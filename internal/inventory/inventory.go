@@ -53,8 +53,12 @@ var orphanPrefixes = []string{
 	".bashrc", ".bash_profile", ".profile",
 }
 
-func Discover() ([]File, error) {
-	home, err := os.UserHomeDir()
+var Discover = discover
+
+var userHomeDir = os.UserHomeDir
+
+func discover() ([]File, error) {
+	home, err := userHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("home directory: %w", err)
 	}

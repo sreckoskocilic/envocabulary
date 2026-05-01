@@ -1,6 +1,7 @@
 package inventory
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -229,5 +230,21 @@ func TestIsCanonical(t *testing.T) {
 		if got := isCanonical(in); got != want {
 			t.Errorf("isCanonical(%q) = %v, want %v", in, got, want)
 		}
+	}
+}
+
+func TestDiscover_HomeDirError(t *testing.T) {
+	orig := userHomeDir
+	t.Cleanup(func() { userHomeDir = orig })
+	userHomeDir = func() (string, error) {
+		return "", errors.New("no home")
+	}
+
+	_, err := discover()
+	if err == nil {
+		t.Fatal("expected error from discover")
+	}
+	if !strings.Contains(err.Error(), "home directory") {
+		t.Errorf("expected wrapped error; got %v", err)
 	}
 }

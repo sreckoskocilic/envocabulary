@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -853,5 +854,74 @@ func TestRun_DispatchToReport(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "SAFE TO DELETE") {
 		t.Errorf("expected report output; got:\n%s", stdout.String())
+	}
+}
+
+func stubDiscoverError(t *testing.T) {
+	t.Helper()
+	orig := inventory.Discover
+	t.Cleanup(func() { inventory.Discover = orig })
+	inventory.Discover = func() ([]inventory.File, error) {
+		return nil, errors.New("mock discover error")
+	}
+}
+
+func TestRunInventory_DiscoverError(t *testing.T) {
+	stubDiscoverError(t)
+	var stdout, stderr bytes.Buffer
+	code := runInventory(nil, &stdout, &stderr)
+	if code != 1 {
+		t.Errorf("expected 1, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "mock discover error") {
+		t.Errorf("expected error on stderr; got %q", stderr.String())
+	}
+}
+
+func TestRunDedup_DiscoverError(t *testing.T) {
+	stubDiscoverError(t)
+	var stdout, stderr bytes.Buffer
+	code := runDedup(nil, &stdout, &stderr)
+	if code != 1 {
+		t.Errorf("expected 1, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "mock discover error") {
+		t.Errorf("expected error on stderr; got %q", stderr.String())
+	}
+}
+
+func TestRunDangling_DiscoverError(t *testing.T) {
+	stubDiscoverError(t)
+	var stdout, stderr bytes.Buffer
+	code := runDangling(nil, &stdout, &stderr)
+	if code != 1 {
+		t.Errorf("expected 1, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "mock discover error") {
+		t.Errorf("expected error on stderr; got %q", stderr.String())
+	}
+}
+
+func TestRunLost_DiscoverError(t *testing.T) {
+	stubDiscoverError(t)
+	var stdout, stderr bytes.Buffer
+	code := runLost(nil, &stdout, &stderr)
+	if code != 1 {
+		t.Errorf("expected 1, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "mock discover error") {
+		t.Errorf("expected error on stderr; got %q", stderr.String())
+	}
+}
+
+func TestRunReport_DiscoverError(t *testing.T) {
+	stubDiscoverError(t)
+	var stdout, stderr bytes.Buffer
+	code := runReport(nil, &stdout, &stderr)
+	if code != 1 {
+		t.Errorf("expected 1, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "mock discover error") {
+		t.Errorf("expected error on stderr; got %q", stderr.String())
 	}
 }
