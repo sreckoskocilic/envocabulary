@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -21,22 +20,14 @@ type Options struct {
 	Dedup          bool
 }
 
-var zshLoginOrder = map[string]int{
-	".zshenv":   0,
-	".zprofile": 1,
-	".zshrc":    2,
-	".zlogin":   3,
-	".zlogout":  4,
-}
-
 func Write(w io.Writer, opts Options) error {
 	files, err := inventory.Discover()
 	if err != nil {
 		return err
 	}
-	keep := filterFiles(files, opts)
+	keep := inventory.FilterFiles(files, opts.IncludeBash, opts.IncludeOrphans)
 	slices.SortStableFunc(keep, func(a, b inventory.File) int {
-		return cmp.Compare(roleOrder(a), roleOrder(b))
+		return cmp.Compare(inventory.FileRank(a), inventory.FileRank(b))
 	})
 
 	var losers map[string]dedup.Occurrence
@@ -53,49 +44,6 @@ func Write(w io.Writer, opts Options) error {
 		}
 	}
 	return nil
-}
-
-func filterFiles(files []inventory.File, opts Options) []inventory.File {
-	var out []inventory.File
-	for _, f := range files {
-		switch f.Role {
-		case inventory.RoleCanonicalZsh:
-			out = append(out, f)
-		case inventory.RoleCanonicalBash:
-			if opts.IncludeBash {
-				out = append(out, f)
-			}
-		case inventory.RoleOrphan:
-			if opts.IncludeOrphans && isShellOrphan(f.Path, opts.IncludeBash) {
-				out = append(out, f)
-			}
-		}
-	}
-	return out
-}
-
-func isShellOrphan(path string, includeBash bool) bool {
-	name := filepath.Base(path)
-	if strings.Contains(name, "zsh") || strings.HasPrefix(name, ".zprofile") || strings.HasPrefix(name, ".zlog") {
-		return true
-	}
-	if includeBash {
-		return strings.Contains(name, "bash") || strings.HasPrefix(name, ".profile")
-	}
-	return false
-}
-
-func roleOrder(f inventory.File) int {
-	base := filepath.Base(f.Path)
-	switch f.Role {
-	case inventory.RoleCanonicalZsh:
-		return zshLoginOrder[base]
-	case inventory.RoleCanonicalBash:
-		return 100
-	case inventory.RoleOrphan:
-		return 200
-	}
-	return 999
 }
 
 func writeFile(w io.Writer, f inventory.File, opts Options, losers map[string]dedup.Occurrence) error {

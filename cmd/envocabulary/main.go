@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -283,9 +282,9 @@ func runDedup(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return die(stderr, err)
 	}
-	keep := filterFiles(files, *bash, *orphans)
+	keep := inventory.FilterFiles(files, *bash, *orphans)
 	slices.SortStableFunc(keep, func(a, b inventory.File) int {
-		return cmp.Compare(dedupFileRank(a), dedupFileRank(b))
+		return cmp.Compare(inventory.FileRank(a), inventory.FileRank(b))
 	})
 
 	groups := dedup.Find(keep)
@@ -295,26 +294,6 @@ func runDedup(args []string, stdout, stderr io.Writer) int {
 	}
 	emitDedupText(stdout, groups)
 	return 0
-}
-
-var zshLoginRank = map[string]int{
-	".zshenv": 0, ".zprofile": 1, ".zshrc": 2, ".zlogin": 3, ".zlogout": 4,
-}
-
-func dedupFileRank(f inventory.File) int {
-	base := f.Path
-	if i := strings.LastIndex(base, "/"); i >= 0 {
-		base = base[i+1:]
-	}
-	switch f.Role {
-	case inventory.RoleCanonicalZsh:
-		return zshLoginRank[base]
-	case inventory.RoleCanonicalBash:
-		return 100
-	case inventory.RoleOrphan:
-		return 200
-	}
-	return 999
 }
 
 func emitDedupText(w io.Writer, groups []dedup.Group) {
@@ -349,7 +328,7 @@ func runDangling(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return die(stderr, err)
 	}
-	keep := filterFiles(files, *bash, *orphans)
+	keep := inventory.FilterFiles(files, *bash, *orphans)
 
 	findings := dangling.Find(keep)
 	if len(findings) == 0 {
@@ -404,7 +383,7 @@ func runLost(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return die(stderr, err)
 	}
-	keep := filterFiles(files, *bash, true)
+	keep := inventory.FilterFiles(files, *bash, true)
 
 	findings := lost.Find(keep)
 	if len(findings) == 0 {
@@ -624,9 +603,9 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return die(stderr, err)
 	}
-	keep := filterFiles(files, *bash, true)
+	keep := inventory.FilterFiles(files, *bash, true)
 	slices.SortStableFunc(keep, func(a, b inventory.File) int {
-		return cmp.Compare(dedupFileRank(a), dedupFileRank(b))
+		return cmp.Compare(inventory.FileRank(a), inventory.FileRank(b))
 	})
 
 	r := report.Build(keep)
@@ -637,8 +616,8 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 		if err != nil {
 			return die(stderr, err)
 		}
-		defer f.Close()
 		if err := report.WriteHTML(f, r); err != nil {
+			f.Close()
 			return die(stderr, err)
 		}
 		if err := f.Close(); err != nil {
@@ -649,36 +628,6 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 	}
 	report.WriteText(stdout, r)
 	return 0
-}
-
-func filterFiles(files []inventory.File, bash, orphans bool) []inventory.File {
-	keep := make([]inventory.File, 0, len(files))
-	for _, f := range files {
-		switch f.Role {
-		case inventory.RoleCanonicalZsh:
-			keep = append(keep, f)
-		case inventory.RoleCanonicalBash:
-			if bash {
-				keep = append(keep, f)
-			}
-		case inventory.RoleOrphan:
-			if orphans && isShellOrphan(f.Path, bash) {
-				keep = append(keep, f)
-			}
-		}
-	}
-	return keep
-}
-
-func isShellOrphan(path string, includeBash bool) bool {
-	name := filepath.Base(path)
-	if strings.Contains(name, "zsh") || strings.HasPrefix(name, ".zprofile") || strings.HasPrefix(name, ".zlog") {
-		return true
-	}
-	if includeBash {
-		return strings.Contains(name, "bash") || strings.HasPrefix(name, ".profile")
-	}
-	return false
 }
 
 func die(stderr io.Writer, err error) int {

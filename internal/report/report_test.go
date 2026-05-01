@@ -2,7 +2,6 @@ package report
 
 import (
 	"bytes"
-	"errors"
 	"strings"
 	"testing"
 
@@ -205,30 +204,17 @@ func TestWriteHTMLEmptySections(t *testing.T) {
 }
 
 func TestTildePath(t *testing.T) {
-	orig := userHomeDir
-	t.Cleanup(func() { userHomeDir = orig })
-	userHomeDir = func() (string, error) { return "/home/u", nil }
-
 	cases := []struct {
-		in, want string
+		in, home, want string
 	}{
-		{"/home/u", "~"},
-		{"/home/u/foo", "~/foo"},
-		{"/other/path", "/other/path"},
+		{"/home/u", "/home/u", "~"},
+		{"/home/u/foo", "/home/u", "~/foo"},
+		{"/other/path", "/home/u", "/other/path"},
+		{"/some/path", "", "/some/path"},
 	}
 	for _, tc := range cases {
-		if got := tildePath(tc.in); got != tc.want {
-			t.Errorf("tildePath(%q) = %q, want %q", tc.in, got, tc.want)
+		if got := tildePath(tc.in, tc.home); got != tc.want {
+			t.Errorf("tildePath(%q, %q) = %q, want %q", tc.in, tc.home, got, tc.want)
 		}
-	}
-}
-
-func TestTildePath_HomeDirError(t *testing.T) {
-	orig := userHomeDir
-	t.Cleanup(func() { userHomeDir = orig })
-	userHomeDir = func() (string, error) { return "", errors.New("no home") }
-
-	if got := tildePath("/some/path"); got != "/some/path" {
-		t.Errorf("expected fallback to raw path; got %q", got)
 	}
 }

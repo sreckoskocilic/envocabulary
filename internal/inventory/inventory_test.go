@@ -156,6 +156,105 @@ func TestExtractValue(t *testing.T) {
 	}
 }
 
+func TestFileRank(t *testing.T) {
+	cases := []struct {
+		path string
+		role Role
+		want int
+	}{
+		{"/u/.zshenv", RoleCanonicalZsh, 0},
+		{"/u/.zprofile", RoleCanonicalZsh, 1},
+		{"/u/.zshrc", RoleCanonicalZsh, 2},
+		{"/u/.zlogin", RoleCanonicalZsh, 3},
+		{"/u/.zlogout", RoleCanonicalZsh, 4},
+		{".zshrc", RoleCanonicalZsh, 2},
+		{"/u/.bashrc", RoleCanonicalBash, 100},
+		{"/u/.zshrc.bak", RoleOrphan, 200},
+		{"/u/x", Role("nonsense"), 999},
+	}
+	for _, tc := range cases {
+		got := FileRank(File{Path: tc.path, Role: tc.role})
+		if got != tc.want {
+			t.Errorf("%s/%s: got %d, want %d", tc.path, tc.role, got, tc.want)
+		}
+	}
+}
+
+func TestIsShellOrphan(t *testing.T) {
+	cases := []struct {
+		name        string
+		path        string
+		includeBash bool
+		want        bool
+	}{
+		{"zsh in name", "/u/.zshrc.backup", false, true},
+		{".zprofile prefix", "/u/.zprofile_old", false, true},
+		{".zlog prefix", "/u/.zlogin.bak", false, true},
+		{"bashrc without --bash", "/u/.bashrc.backup", false, false},
+		{"bashrc with --bash", "/u/.bashrc.backup", true, true},
+		{".profile with --bash", "/u/.profile.bak", true, true},
+		{".profile without --bash", "/u/.profile.bak", false, false},
+		{"random file", "/u/.foo.bak", false, false},
+		{"random file with --bash", "/u/.foo.bak", true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsShellOrphan(tc.path, tc.includeBash); got != tc.want {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFilterFiles(t *testing.T) {
+	files := []File{
+		{Path: "/u/.zshrc", Role: RoleCanonicalZsh},
+		{Path: "/u/.bashrc", Role: RoleCanonicalBash},
+		{Path: "/u/.zshrc.backup", Role: RoleOrphan},
+		{Path: "/u/.bashrc.old", Role: RoleOrphan},
+		{Path: "/u/.foo.bak", Role: RoleOrphan},
+	}
+
+	t.Run("zsh only", func(t *testing.T) {
+		got := FilterFiles(files, false, false)
+		if len(got) != 1 || got[0].Path != "/u/.zshrc" {
+			t.Errorf("expected only canonical zsh, got %+v", got)
+		}
+	})
+
+	t.Run("with bash", func(t *testing.T) {
+		got := FilterFiles(files, true, false)
+		if len(got) != 2 {
+			t.Errorf("expected zsh + bash canonical, got %d", len(got))
+		}
+	})
+
+	t.Run("orphans filters by shell family", func(t *testing.T) {
+		got := FilterFiles(files, false, true)
+		for _, f := range got {
+			if f.Path == "/u/.bashrc.old" || f.Path == "/u/.foo.bak" {
+				t.Errorf("non-zsh orphan %s should be excluded; got %+v", f.Path, got)
+			}
+		}
+	})
+
+	t.Run("bash orphans included with --bash", func(t *testing.T) {
+		got := FilterFiles(files, true, true)
+		hasBash := false
+		for _, f := range got {
+			if f.Path == "/u/.bashrc.old" {
+				hasBash = true
+			}
+			if f.Path == "/u/.foo.bak" {
+				t.Errorf("non-shell orphan should still be excluded; got %+v", got)
+			}
+		}
+		if !hasBash {
+			t.Errorf("expected bash orphan with --bash --orphans; got %+v", got)
+		}
+	})
+}
+
 func TestHasOrphanPrefix(t *testing.T) {
 	tests := []struct {
 		name string

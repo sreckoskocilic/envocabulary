@@ -182,6 +182,53 @@ func extractValue(raw string) string {
 	return raw
 }
 
+var ZshLoginRank = map[string]int{
+	".zshenv": 0, ".zprofile": 1, ".zshrc": 2, ".zlogin": 3, ".zlogout": 4,
+}
+
+func FileRank(f File) int {
+	base := filepath.Base(f.Path)
+	switch f.Role {
+	case RoleCanonicalZsh:
+		return ZshLoginRank[base]
+	case RoleCanonicalBash:
+		return 100
+	case RoleOrphan:
+		return 200
+	}
+	return 999
+}
+
+func FilterFiles(files []File, bash, orphans bool) []File {
+	keep := make([]File, 0, len(files))
+	for _, f := range files {
+		switch f.Role {
+		case RoleCanonicalZsh:
+			keep = append(keep, f)
+		case RoleCanonicalBash:
+			if bash {
+				keep = append(keep, f)
+			}
+		case RoleOrphan:
+			if orphans && IsShellOrphan(f.Path, bash) {
+				keep = append(keep, f)
+			}
+		}
+	}
+	return keep
+}
+
+func IsShellOrphan(path string, includeBash bool) bool {
+	name := filepath.Base(path)
+	if strings.Contains(name, "zsh") || strings.HasPrefix(name, ".zprofile") || strings.HasPrefix(name, ".zlog") {
+		return true
+	}
+	if includeBash {
+		return strings.Contains(name, "bash") || strings.HasPrefix(name, ".profile")
+	}
+	return false
+}
+
 func ParseReader(r io.Reader) ([]Item, error) {
 	var items []Item
 	sc := bufio.NewScanner(r)

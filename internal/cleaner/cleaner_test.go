@@ -88,6 +88,19 @@ func TestClean(t *testing.T) {
 	}
 }
 
+func TestClean_PreservesNoTrailingNewline(t *testing.T) {
+	got, _, err := Clean(strings.NewReader("export FOO=1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.HasSuffix(got, "\n") {
+		t.Errorf("expected no trailing newline; got %q", got)
+	}
+	if got != "export FOO=1" {
+		t.Errorf("got %q, want %q", got, "export FOO=1")
+	}
+}
+
 func TestLooksLikeLabel(t *testing.T) {
 	cases := map[string]bool{
 		"aliases":                       true,
