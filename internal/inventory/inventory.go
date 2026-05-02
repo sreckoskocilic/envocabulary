@@ -182,6 +182,13 @@ func extractValue(raw string) string {
 	return raw
 }
 
+func stripQuotes(s string) string {
+	if len(s) >= 2 && (s[0] == '"' || s[0] == '\'') && s[len(s)-1] == s[0] {
+		return s[1 : len(s)-1]
+	}
+	return s
+}
+
 var ZshLoginRank = map[string]int{
 	".zshenv": 0, ".zprofile": 1, ".zshrc": 2, ".zlogin": 3, ".zlogout": 4,
 }
@@ -260,11 +267,7 @@ func ParseReader(r io.Reader) ([]Item, error) {
 			continue
 		}
 		if m := sourceRe.FindStringSubmatch(line); m != nil {
-			name := m[1]
-			if len(name) >= 2 && (name[0] == '"' || name[0] == '\'') && name[len(name)-1] == name[0] {
-				name = name[1 : len(name)-1]
-			}
-			items = append(items, Item{Kind: KindSource, Name: name, Line: lineNo})
+			items = append(items, Item{Kind: KindSource, Name: stripQuotes(m[1]), Line: lineNo})
 			continue
 		}
 		if m := assignRe.FindStringSubmatch(line); len(m) > 1 && !reservedFuncNames[m[1]] {
