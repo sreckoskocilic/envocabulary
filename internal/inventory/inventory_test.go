@@ -73,6 +73,16 @@ func TestParseReader(t *testing.T) {
 			[]Item{{Kind: KindSource, Name: "/Users/me/.extras", Line: 1}},
 		},
 		{
+			"source double-quoted path with spaces",
+			`source "/path with spaces/file"`,
+			[]Item{{Kind: KindSource, Name: "/path with spaces/file", Line: 1}},
+		},
+		{
+			"source single-quoted path with spaces",
+			`source '/path with spaces/file'`,
+			[]Item{{Kind: KindSource, Name: "/path with spaces/file", Line: 1}},
+		},
+		{
 			"comment ignored",
 			`# export FOO=bar`,
 			nil,
@@ -85,6 +95,11 @@ func TestParseReader(t *testing.T) {
 		{
 			"control-flow keyword not a function",
 			`if [[ -f foo ]]; then`,
+			nil,
+		},
+		{
+			"function keyword with reserved name rejected",
+			`function if { something; }`,
 			nil,
 		},
 		{

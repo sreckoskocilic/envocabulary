@@ -3,6 +3,7 @@ package buckets
 import (
 	"context"
 	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 
@@ -100,11 +101,13 @@ func Classify(name, value string) (origin model.Origin, source string) {
 	if shellManagedVars[name] {
 		return model.OriginSystem, "shell-managed"
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), launchctlTimeout)
-	defer cancel()
-	if out, err := exec.CommandContext(ctx, "launchctl", "getenv", name).Output(); err == nil {
-		if strings.TrimRight(string(out), "\n") == value {
-			return model.OriginLaunchd, "launchctl setenv"
+	if runtime.GOOS == "darwin" {
+		ctx, cancel := context.WithTimeout(context.Background(), launchctlTimeout)
+		defer cancel()
+		if out, err := exec.CommandContext(ctx, "launchctl", "getenv", name).Output(); err == nil {
+			if strings.TrimRight(string(out), "\n") == value {
+				return model.OriginLaunchd, "launchctl setenv"
+			}
 		}
 	}
 	return model.OriginUnknown, ""

@@ -154,7 +154,7 @@ var (
 	aliasRe     = regexp.MustCompile(`^\s*alias\s+(?:-[a-zA-Z]+\s+)*([A-Za-z_][A-Za-z0-9_.-]*)=`)
 	funcKwRe    = regexp.MustCompile(`^\s*function\s+([A-Za-z_][A-Za-z0-9_.-]*)`)
 	funcParenRe = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_.-]*)\s*\(\s*\)`)
-	sourceRe    = regexp.MustCompile(`^\s*(?:source|\.)\s+(\S+)`)
+	sourceRe    = regexp.MustCompile(`^\s*(?:source|\.)\s+("[^"]*"|'[^']*'|\S+)`)
 )
 
 var reservedFuncNames = map[string]bool{
@@ -250,7 +250,9 @@ func ParseReader(r io.Reader) ([]Item, error) {
 			continue
 		}
 		if m := funcKwRe.FindStringSubmatch(line); m != nil {
-			items = append(items, Item{Kind: KindFunction, Name: m[1], Line: lineNo})
+			if !reservedFuncNames[m[1]] {
+				items = append(items, Item{Kind: KindFunction, Name: m[1], Line: lineNo})
+			}
 			continue
 		}
 		if m := funcParenRe.FindStringSubmatch(line); len(m) > 1 && !reservedFuncNames[m[1]] {
@@ -258,7 +260,11 @@ func ParseReader(r io.Reader) ([]Item, error) {
 			continue
 		}
 		if m := sourceRe.FindStringSubmatch(line); m != nil {
-			items = append(items, Item{Kind: KindSource, Name: m[1], Line: lineNo})
+			name := m[1]
+			if len(name) >= 2 && (name[0] == '"' || name[0] == '\'') && name[len(name)-1] == name[0] {
+				name = name[1 : len(name)-1]
+			}
+			items = append(items, Item{Kind: KindSource, Name: name, Line: lineNo})
 			continue
 		}
 		if m := assignRe.FindStringSubmatch(line); len(m) > 1 && !reservedFuncNames[m[1]] {
