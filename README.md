@@ -15,10 +15,11 @@ Works with zsh and bash on macOS, Linux, and FreeBSD.
 
 A `grep -r JAVA_HOME ~` will show every file that mentions the variable, but it's not clear from the output which assignment is active in the current shell:
 
-    $ envocabulary explain JAVA_HOME
+    $ envocabulary explain --chain JAVA_HOME
     JAVA_HOME
         origin:  shell-file
-        winner:  ~/.zshrc:42
+        winner:  ~/helpers.sh:3
+        chain:   ~/.zshrc → ~/helpers.sh
         also written at:  ~/.zshenv:8
 
 ## Install
@@ -62,7 +63,6 @@ Static files:
 
 ## Limits
 
-- **Attribution is last-writer only.** If `.zshrc` sources a helper that exports the variable, you see the helper's `file:line`, not the chain that led there.
 - **Colon-accumulated vars are not attributed** (`PATH`, `MANPATH`, `FPATH` — constructed from multiple expressions across files).
 - **One assignment per line** (`export EDITOR=vim VISUAL=vim` records `EDITOR` only).
 - **`dangling` will not resolve PATH-like assignments or expansions** (`export GOPATH=$HOME/go`).

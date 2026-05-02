@@ -2,6 +2,7 @@ package capture
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -263,7 +264,7 @@ func TestTracedStartupWith_TypeIntegrity(t *testing.T) {
 		t.Fatalf("got %d entries, want 1", len(got))
 	}
 	want := model.TraceEntry{File: "/x", Line: 1, Name: "FOO", Raw: "export FOO=bar"}
-	if got[0] != want {
+	if !reflect.DeepEqual(got[0], want) {
 		t.Errorf("got %+v, want %+v", got[0], want)
 	}
 }

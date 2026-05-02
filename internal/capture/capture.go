@@ -136,25 +136,58 @@ func parseNullSeparated(b []byte) map[string]string {
 }
 
 var (
-	traceLineRe = regexp.MustCompile(`^\++(.+?):(\d+)> (.*)$`)
+	traceLineRe = regexp.MustCompile(`^(\++)(.+?):(\d+)> (.*)$`)
 	assignRe    = regexp.MustCompile(`(?:^|\s)(?:export\s+|typeset(?:\s+-[a-zA-Z]+)*\s+|declare(?:\s+-[a-zA-Z]+)*\s+|local(?:\s+-[a-zA-Z]+)*\s+)?([A-Za-z_][A-Za-z0-9_]*)=`)
+	sourceRe    = regexp.MustCompile(`^(?:source|\.)\s+`)
 )
 
 func parseTrace(s string) []model.TraceEntry {
 	lines := strings.Split(s, "\n")
 	var entries []model.TraceEntry //nolint:prealloc // most lines are non-trace noise
+	var stack []string
+	currentFile := ""
+	prevWasSource := false
+
 	for _, line := range lines {
 		m := traceLineRe.FindStringSubmatch(line)
 		if m == nil {
 			continue
 		}
-		file, lineStr, rest := m[1], m[2], m[3]
+		file, lineStr, rest := m[2], m[3], m[4]
 		ln, _ := strconv.Atoi(lineStr)
+
+		if file != currentFile {
+			if prevWasSource {
+				stack = append(stack, file)
+			} else if idx := fileIndex(stack, file); idx >= 0 {
+				stack = stack[:idx+1]
+			} else {
+				stack = []string{file}
+			}
+			currentFile = file
+		}
+
+		prevWasSource = sourceRe.MatchString(rest)
+
 		am := assignRe.FindStringSubmatch(rest)
 		if am == nil {
 			continue
 		}
-		entries = append(entries, model.TraceEntry{File: file, Line: ln, Name: am[1], Raw: rest})
+		entry := model.TraceEntry{File: file, Line: ln, Name: am[1], Raw: rest}
+		if len(stack) > 1 {
+			entry.Chain = make([]string, len(stack)-1)
+			copy(entry.Chain, stack[:len(stack)-1])
+		}
+		entries = append(entries, entry)
 	}
 	return entries
+}
+
+func fileIndex(stack []string, file string) int {
+	for i := len(stack) - 1; i >= 0; i-- {
+		if stack[i] == file {
+			return i
+		}
+	}
+	return -1
 }

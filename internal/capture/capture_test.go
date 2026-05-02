@@ -116,6 +116,51 @@ func TestParseTrace(t *testing.T) {
 			"",
 			nil,
 		},
+		{
+			"chain from sourced file",
+			"+/u/.zshrc:5> source helpers.sh\n++/u/helpers.sh:3> export FOO=bar\n",
+			[]model.TraceEntry{
+				{File: "/u/helpers.sh", Line: 3, Name: "FOO", Raw: "export FOO=bar", Chain: []string{"/u/.zshrc"}},
+			},
+		},
+		{
+			"deep chain from doubly-sourced file",
+			"+/u/.zshrc:1> source a.sh\n++/u/a.sh:1> source b.sh\n+++/u/b.sh:2> export X=1\n",
+			[]model.TraceEntry{
+				{File: "/u/b.sh", Line: 2, Name: "X", Raw: "export X=1", Chain: []string{"/u/.zshrc", "/u/a.sh"}},
+			},
+		},
+		{
+			"chain resets for new top-level file",
+			"+/u/.zprofile:1> export A=1\n+/u/.zshrc:1> source h.sh\n++/u/h.sh:1> export B=2\n",
+			[]model.TraceEntry{
+				{File: "/u/.zprofile", Line: 1, Name: "A", Raw: "export A=1"},
+				{File: "/u/h.sh", Line: 1, Name: "B", Raw: "export B=2", Chain: []string{"/u/.zshrc"}},
+			},
+		},
+		{
+			"chain from sourced file at same depth",
+			"+/u/.zshrc:5> . helpers.sh\n+/u/helpers.sh:3> export FOO=bar\n",
+			[]model.TraceEntry{
+				{File: "/u/helpers.sh", Line: 3, Name: "FOO", Raw: "export FOO=bar", Chain: []string{"/u/.zshrc"}},
+			},
+		},
+		{
+			"no chain for top-level assignments",
+			"+/u/.zshrc:1> export A=1\n+/u/.zprofile:5> export B=2\n",
+			[]model.TraceEntry{
+				{File: "/u/.zshrc", Line: 1, Name: "A", Raw: "export A=1"},
+				{File: "/u/.zprofile", Line: 5, Name: "B", Raw: "export B=2"},
+			},
+		},
+		{
+			"chain pops correctly on return from source",
+			"+/u/.zshrc:1> source a.sh\n++/u/a.sh:1> export X=1\n+/u/.zshrc:2> export Y=2\n",
+			[]model.TraceEntry{
+				{File: "/u/a.sh", Line: 1, Name: "X", Raw: "export X=1", Chain: []string{"/u/.zshrc"}},
+				{File: "/u/.zshrc", Line: 2, Name: "Y", Raw: "export Y=2"},
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

@@ -84,7 +84,7 @@ Live-env (introspects the running shell):
   scan [--json] [--values] [--shell SHELL]
       Prints all variables in the current env grouped by origin.
 
-  explain [--json] [--values] [--shell SHELL] NAME
+  explain [--json] [--values] [--chain] [--shell SHELL] NAME
       Prints full attribution for provided variable.
 
 Static-file:
@@ -137,7 +137,7 @@ func helpExplain(w io.Writer) {
 	fmt.Fprint(w, `envocabulary explain — prints full attribution for provided variable
 
 Usage:
-  envocabulary explain [--json] [--values] [--shell SHELL] NAME
+  envocabulary explain [--json] [--values] [--chain] [--shell SHELL] NAME
 
 Arguments:
   NAME            the env variable name (e.g. JAVA_HOME, EDITOR)
@@ -145,11 +145,13 @@ Arguments:
 Flags:
   --json          emit JSON
   --values        include value and raw assignment lines (may expose secrets)
+  --chain         show source chain (which file sourced the file that set the var)
   --shell SHELL   force tracer (zsh|bash); default auto-detects
 
 Examples:
   envocabulary explain JAVA_HOME
   envocabulary explain --values EDITOR
+  envocabulary explain --chain EDITOR
   envocabulary explain --shell bash PATH
   envocabulary explain --json EDITOR | jq
 `)
@@ -678,6 +680,7 @@ func runExplain(args []string, stdout, stderr io.Writer) int {
 	fs.Usage = func() { helpExplain(stdout) }
 	jsonOut := fs.Bool("json", false, "emit JSON")
 	showValues := fs.Bool("values", false, "include value and raw traced commands (may expose secrets)")
+	showChain := fs.Bool("chain", false, "show source chain (which file sourced the file that set the var)")
 	shellFlag := fs.String("shell", "", "force tracer for a specific shell (zsh|bash); default auto-detects from $SHELL")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -714,6 +717,6 @@ func runExplain(args []string, stdout, stderr io.Writer) int {
 		}
 		return 0
 	}
-	explain.EmitText(stdout, result, *showValues)
+	explain.EmitText(stdout, result, *showValues, *showChain)
 	return 0
 }
