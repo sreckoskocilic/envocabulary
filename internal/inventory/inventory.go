@@ -2,11 +2,12 @@ package inventory
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -52,21 +53,21 @@ var orphanPrefixes = []string{
 	".bashrc", ".bash_profile", ".profile",
 }
 
-func Discover() []File {
-	home, err := os.UserHomeDir()
+var Discover = discover
+
+var userHomeDir = os.UserHomeDir
+
+func discover() ([]File, error) {
+	home, err := userHomeDir()
 	if err != nil {
-		return nil
-	}
-	zdot := os.Getenv("ZDOTDIR")
-	if zdot == "" {
-		zdot = home
+		return nil, fmt.Errorf("home directory: %w", err)
 	}
 
 	files := make([]File, 0, len(canonicalZshNames)+len(canonicalBashNames))
 	seen := map[string]bool{}
 
 	for _, n := range canonicalZshNames {
-		p := filepath.Join(zdot, n)
+		p := filepath.Join(home, n)
 		if _, err := os.Stat(p); err == nil {
 			files = append(files, parseFile(p, RoleCanonicalZsh))
 			seen[p] = true
@@ -74,9 +75,6 @@ func Discover() []File {
 	}
 	for _, n := range canonicalBashNames {
 		p := filepath.Join(home, n)
-		if seen[p] {
-			continue
-		}
 		if _, err := os.Stat(p); err == nil {
 			files = append(files, parseFile(p, RoleCanonicalBash))
 			seen[p] = true
@@ -86,12 +84,7 @@ func Discover() []File {
 	for _, p := range scanOrphans(home, seen) {
 		files = append(files, parseFile(p, RoleOrphan))
 	}
-	if zdot != home {
-		for _, p := range scanOrphans(zdot, seen) {
-			files = append(files, parseFile(p, RoleOrphan))
-		}
-	}
-	return files
+	return files, nil
 }
 
 func scanOrphans(dir string, seen map[string]bool) []string {
@@ -118,7 +111,7 @@ func scanOrphans(dir string, seen map[string]bool) []string {
 		seen[p] = true
 		out = append(out, p)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
@@ -161,7 +154,7 @@ var (
 	aliasRe     = regexp.MustCompile(`^\s*alias\s+(?:-[a-zA-Z]+\s+)*([A-Za-z_][A-Za-z0-9_.-]*)=`)
 	funcKwRe    = regexp.MustCompile(`^\s*function\s+([A-Za-z_][A-Za-z0-9_.-]*)`)
 	funcParenRe = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_.-]*)\s*\(\s*\)`)
-	sourceRe    = regexp.MustCompile(`^\s*(?:source|\.)\s+(\S+)`)
+	sourceRe    = regexp.MustCompile(`^\s*(?:source|\.)\s+("[^"]*"|'[^']*'|\S+)`)
 )
 
 var reservedFuncNames = map[string]bool{
@@ -189,6 +182,60 @@ func extractValue(raw string) string {
 	return raw
 }
 
+func stripQuotes(s string) string {
+	if len(s) >= 2 && (s[0] == '"' || s[0] == '\'') && s[len(s)-1] == s[0] {
+		return s[1 : len(s)-1]
+	}
+	return s
+}
+
+var ZshLoginRank = map[string]int{
+	".zshenv": 0, ".zprofile": 1, ".zshrc": 2, ".zlogin": 3, ".zlogout": 4,
+}
+
+func FileRank(f File) int {
+	base := filepath.Base(f.Path)
+	switch f.Role {
+	case RoleCanonicalZsh:
+		return ZshLoginRank[base]
+	case RoleCanonicalBash:
+		return 100
+	case RoleOrphan:
+		return 200
+	}
+	return 999
+}
+
+func FilterFiles(files []File, bash, orphans bool) []File {
+	keep := make([]File, 0, len(files))
+	for _, f := range files {
+		switch f.Role {
+		case RoleCanonicalZsh:
+			keep = append(keep, f)
+		case RoleCanonicalBash:
+			if bash {
+				keep = append(keep, f)
+			}
+		case RoleOrphan:
+			if orphans && IsShellOrphan(f.Path, bash) {
+				keep = append(keep, f)
+			}
+		}
+	}
+	return keep
+}
+
+func IsShellOrphan(path string, includeBash bool) bool {
+	name := filepath.Base(path)
+	if strings.Contains(name, "zsh") || strings.HasPrefix(name, ".zprofile") || strings.HasPrefix(name, ".zlog") {
+		return true
+	}
+	if includeBash {
+		return strings.Contains(name, "bash") || strings.HasPrefix(name, ".profile")
+	}
+	return false
+}
+
 func ParseReader(r io.Reader) ([]Item, error) {
 	var items []Item
 	sc := bufio.NewScanner(r)
@@ -210,7 +257,9 @@ func ParseReader(r io.Reader) ([]Item, error) {
 			continue
 		}
 		if m := funcKwRe.FindStringSubmatch(line); m != nil {
-			items = append(items, Item{Kind: KindFunction, Name: m[1], Line: lineNo})
+			if !reservedFuncNames[m[1]] {
+				items = append(items, Item{Kind: KindFunction, Name: m[1], Line: lineNo})
+			}
 			continue
 		}
 		if m := funcParenRe.FindStringSubmatch(line); len(m) > 1 && !reservedFuncNames[m[1]] {
@@ -218,7 +267,7 @@ func ParseReader(r io.Reader) ([]Item, error) {
 			continue
 		}
 		if m := sourceRe.FindStringSubmatch(line); m != nil {
-			items = append(items, Item{Kind: KindSource, Name: m[1], Line: lineNo})
+			items = append(items, Item{Kind: KindSource, Name: stripQuotes(m[1]), Line: lineNo})
 			continue
 		}
 		if m := assignRe.FindStringSubmatch(line); len(m) > 1 && !reservedFuncNames[m[1]] {

@@ -1,7 +1,8 @@
 package dedup
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 	"strconv"
 
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
@@ -64,7 +65,7 @@ func Find(files []inventory.File) []Group {
 		if len(b) < 2 {
 			continue
 		}
-		sort.Slice(b, func(i, j int) bool { return b[i].rank < b[j].rank })
+		slices.SortFunc(b, func(a, b entry) int { return cmp.Compare(a.rank, b.rank) })
 		winner := b[len(b)-1].occ
 		losers := make([]Occurrence, 0, len(b)-1)
 		for _, e := range b[:len(b)-1] {
@@ -78,11 +79,11 @@ func Find(files []inventory.File) []Group {
 		})
 	}
 
-	sort.Slice(groups, func(i, j int) bool {
-		if groups[i].Kind != groups[j].Kind {
-			return groups[i].Kind < groups[j].Kind
+	slices.SortFunc(groups, func(a, b Group) int {
+		if c := cmp.Compare(a.Kind, b.Kind); c != 0 {
+			return c
 		}
-		return groups[i].Name < groups[j].Name
+		return cmp.Compare(a.Name, b.Name)
 	})
 	return groups
 }

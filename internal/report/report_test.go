@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sreckoskocilic/envocabulary/internal/dangling"
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
 )
 
@@ -146,6 +147,21 @@ func TestBuildDanglingSource(t *testing.T) {
 	}
 }
 
+func TestBuildDanglingSourceDefinition(t *testing.T) {
+	files := []inventory.File{
+		{Path: "/home/u/.zshrc", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{
+			{Kind: inventory.KindSource, Name: "/nonexistent/file.zsh", Line: 5, Value: "/nonexistent/file.zsh"},
+		}},
+	}
+	r := Build(files)
+	if len(r.Dangling) != 1 {
+		t.Fatalf("expected 1 dangling, got %d", len(r.Dangling))
+	}
+	if !strings.Contains(r.Dangling[0].Definition, "/nonexistent/file.zsh") {
+		t.Errorf("source definition should contain path; got %q", r.Dangling[0].Definition)
+	}
+}
+
 func TestBuildDanglingExportNoValue(t *testing.T) {
 	files := []inventory.File{
 		{Path: "/home/u/.zprofile", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{
@@ -185,5 +201,40 @@ func TestWriteHTMLEmptySections(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "none") {
 		t.Error("expected 'none' for empty sections in HTML")
+	}
+}
+
+func TestFormatDanglingDef(t *testing.T) {
+	cases := []struct {
+		name string
+		in   dangling.Finding
+		want string
+	}{
+		{"source uses value", dangling.Finding{Kind: inventory.KindSource, Name: "src", Value: "/missing/file"}, "/missing/file"},
+		{"export with value", dangling.Finding{Kind: inventory.KindExport, Name: "FOO", Value: "/gone"}, "FOO=/gone"},
+		{"export empty value", dangling.Finding{Kind: inventory.KindExport, Name: "FOO"}, "FOO"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := formatDanglingDef(tc.in); got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestTildePath(t *testing.T) {
+	cases := []struct {
+		in, home, want string
+	}{
+		{"/home/u", "/home/u", "~"},
+		{"/home/u/foo", "/home/u", "~/foo"},
+		{"/other/path", "/home/u", "/other/path"},
+		{"/some/path", "", "/some/path"},
+	}
+	for _, tc := range cases {
+		if got := tildePath(tc.in, tc.home); got != tc.want {
+			t.Errorf("tildePath(%q, %q) = %q, want %q", tc.in, tc.home, got, tc.want)
+		}
 	}
 }

@@ -1,14 +1,15 @@
 package inventory
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 )
 
-func setupHome(t *testing.T, files map[string]string) string {
+func setupHome(t *testing.T, files map[string]string) {
 	t.Helper()
 	dir := t.TempDir()
 	for name, content := range files {
@@ -18,8 +19,6 @@ func setupHome(t *testing.T, files map[string]string) string {
 		}
 	}
 	t.Setenv("HOME", dir)
-	t.Setenv("ZDOTDIR", dir)
-	return dir
 }
 
 func paths(files []File) []string {
@@ -27,13 +26,13 @@ func paths(files []File) []string {
 	for _, f := range files {
 		out = append(out, filepath.Base(f.Path))
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
 func TestDiscover_EmptyHome(t *testing.T) {
 	setupHome(t, nil)
-	got := Discover()
+	got, _ := Discover()
 	if len(got) != 0 {
 		t.Errorf("expected 0 files in empty dir, got %d: %v", len(got), paths(got))
 	}
@@ -46,7 +45,7 @@ func TestDiscover_FindsCanonicalZsh(t *testing.T) {
 		".bashrc":       "export Z=3\n",
 		".bash_profile": "export W=4\n",
 	})
-	got := Discover()
+	got, _ := Discover()
 	wantNames := map[string]Role{
 		".zshrc":        RoleCanonicalZsh,
 		".zshenv":       RoleCanonicalZsh,
@@ -63,7 +62,7 @@ func TestDiscover_FindsCanonicalZsh(t *testing.T) {
 	}
 	found := paths(got)
 	for n := range wantNames {
-		if !contains(found, n) {
+		if !slices.Contains(found, n) {
 			t.Errorf("missing canonical file %s; got %v", n, found)
 		}
 	}
@@ -79,76 +78,18 @@ func TestDiscover_FindsOrphans(t *testing.T) {
 		".gitconfig":      "[user]\n",
 		".zshrcsomething": "noise\n",
 	})
-	got := Discover()
+	got, _ := Discover()
 	found := paths(got)
 	for _, name := range []string{".zshrc.backup", ".zshrc.old", ".zshrc_2023", ".bashrc.bak"} {
-		if !contains(found, name) {
+		if !slices.Contains(found, name) {
 			t.Errorf("expected orphan %s in discovery; got %v", name, found)
 		}
 	}
-	if contains(found, ".gitconfig") {
+	if slices.Contains(found, ".gitconfig") {
 		t.Errorf("non-shell file .gitconfig should not be discovered; got %v", found)
 	}
-	if contains(found, ".zshrcsomething") {
+	if slices.Contains(found, ".zshrcsomething") {
 		t.Errorf("prefix-collision .zshrcsomething should not be discovered; got %v", found)
-	}
-}
-
-func TestDiscover_ZDOTDIRSeparateFromHome(t *testing.T) {
-	home := t.TempDir()
-	zdot := t.TempDir()
-	if err := os.WriteFile(filepath.Join(zdot, ".zshrc"), []byte("export X=1\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(home, ".bashrc"), []byte("export Y=1\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("HOME", home)
-	t.Setenv("ZDOTDIR", zdot)
-
-	got := Discover()
-	found := paths(got)
-	if !contains(found, ".zshrc") {
-		t.Errorf("expected .zshrc from ZDOTDIR; got %v", found)
-	}
-	if !contains(found, ".bashrc") {
-		t.Errorf("expected .bashrc from HOME; got %v", found)
-	}
-}
-
-func TestDiscover_OrphansFromBothHomeAndZDOTDIR(t *testing.T) {
-	home := t.TempDir()
-	zdot := t.TempDir()
-	if err := os.WriteFile(filepath.Join(home, ".bashrc.old"), []byte("# old\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(zdot, ".zshrc.backup"), []byte("# bak\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("HOME", home)
-	t.Setenv("ZDOTDIR", zdot)
-
-	got := Discover()
-	found := paths(got)
-	if !contains(found, ".bashrc.old") || !contains(found, ".zshrc.backup") {
-		t.Errorf("expected orphans from both dirs; got %v", found)
-	}
-}
-
-func TestDiscover_DeduplicatesWhenZDOTDIREqualsHome(t *testing.T) {
-	dir := setupHome(t, map[string]string{".zshrc": "export X=1\n"})
-	t.Setenv("HOME", dir)
-	t.Setenv("ZDOTDIR", dir)
-
-	got := Discover()
-	count := 0
-	for _, f := range got {
-		if filepath.Base(f.Path) == ".zshrc" {
-			count++
-		}
-	}
-	if count != 1 {
-		t.Errorf("expected .zshrc to appear exactly once; got %d", count)
 	}
 }
 
@@ -232,11 +173,18 @@ func TestIsCanonical(t *testing.T) {
 	}
 }
 
-func contains(haystack []string, needle string) bool {
-	for _, s := range haystack {
-		if s == needle {
-			return true
-		}
+func TestDiscover_HomeDirError(t *testing.T) {
+	orig := userHomeDir
+	t.Cleanup(func() { userHomeDir = orig })
+	userHomeDir = func() (string, error) {
+		return "", errors.New("no home")
 	}
-	return false
+
+	_, err := discover()
+	if err == nil {
+		t.Fatal("expected error from discover")
+	}
+	if !strings.Contains(err.Error(), "home directory") {
+		t.Errorf("expected wrapped error; got %v", err)
+	}
 }

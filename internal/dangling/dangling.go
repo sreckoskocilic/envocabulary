@@ -116,6 +116,9 @@ func expand(p string) string {
 		}
 		return filepath.Join(home, p[2:])
 	}
+	if strings.HasPrefix(p, "~") {
+		return ""
+	}
 	return p
 }
 

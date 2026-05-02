@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,100 +12,6 @@ import (
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
 )
 
-func TestRoleOrder(t *testing.T) {
-	cases := []struct {
-		path string
-		role inventory.Role
-		want int
-	}{
-		{"/u/.zshenv", inventory.RoleCanonicalZsh, 0},
-		{"/u/.zprofile", inventory.RoleCanonicalZsh, 1},
-		{"/u/.zshrc", inventory.RoleCanonicalZsh, 2},
-		{"/u/.zlogin", inventory.RoleCanonicalZsh, 3},
-		{"/u/.zlogout", inventory.RoleCanonicalZsh, 4},
-		{"/u/.bashrc", inventory.RoleCanonicalBash, 100},
-		{"/u/.zshrc.backup", inventory.RoleOrphan, 200},
-		{"/u/something", inventory.Role("garbage"), 999},
-	}
-	for _, tc := range cases {
-		got := roleOrder(inventory.File{Path: tc.path, Role: tc.role})
-		if got != tc.want {
-			t.Errorf("%s/%s: got %d, want %d", tc.path, tc.role, got, tc.want)
-		}
-	}
-}
-
-func TestIsZshOrphan(t *testing.T) {
-	cases := []struct {
-		name        string
-		path        string
-		includeBash bool
-		want        bool
-	}{
-		{"zsh in name", "/u/.zshrc.backup", false, true},
-		{".zsh prefix", "/u/.zshrc.old", false, true},
-		{".zprofile prefix", "/u/.zprofile_old", false, true},
-		{".zlog prefix", "/u/.zlogin.bak", false, true},
-		{"bashrc without --bash", "/u/.bashrc.backup", false, false},
-		{"bashrc with --bash", "/u/.bashrc.backup", true, true},
-		{"random file", "/u/.foo.bak", false, false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := isZshOrphan(tc.path, tc.includeBash); got != tc.want {
-				t.Errorf("got %v, want %v", got, tc.want)
-			}
-		})
-	}
-}
-
-func TestFilterFiles(t *testing.T) {
-	files := []inventory.File{
-		{Path: "/u/.zshrc", Role: inventory.RoleCanonicalZsh},
-		{Path: "/u/.bashrc", Role: inventory.RoleCanonicalBash},
-		{Path: "/u/.zshrc.backup", Role: inventory.RoleOrphan},
-		{Path: "/u/.bashrc.old", Role: inventory.RoleOrphan},
-	}
-
-	t.Run("default zsh-only", func(t *testing.T) {
-		got := filterFiles(files, Options{})
-		if len(got) != 1 || got[0].Path != "/u/.zshrc" {
-			t.Errorf("expected only canonical zsh, got %+v", got)
-		}
-	})
-
-	t.Run("with --bash", func(t *testing.T) {
-		got := filterFiles(files, Options{IncludeBash: true})
-		if len(got) != 2 {
-			t.Errorf("expected zsh + bash canonical, got %d files", len(got))
-		}
-	})
-
-	t.Run("with --orphans only includes zsh-flavored orphans", func(t *testing.T) {
-		got := filterFiles(files, Options{IncludeOrphans: true})
-		paths := make([]string, len(got))
-		for i, f := range got {
-			paths[i] = f.Path
-		}
-		hasBashOrphan := false
-		for _, p := range paths {
-			if p == "/u/.bashrc.old" {
-				hasBashOrphan = true
-			}
-		}
-		if hasBashOrphan {
-			t.Errorf("bash orphan should be excluded without --bash; got %+v", paths)
-		}
-	})
-
-	t.Run("with --orphans --bash includes everything", func(t *testing.T) {
-		got := filterFiles(files, Options{IncludeOrphans: true, IncludeBash: true})
-		if len(got) != 4 {
-			t.Errorf("expected all 4 files, got %d", len(got))
-		}
-	})
-}
-
 func TestWrite_BasicEmission(t *testing.T) {
 	dir := t.TempDir()
 	zshrc := filepath.Join(dir, ".zshrc")
@@ -113,7 +20,6 @@ func TestWrite_BasicEmission(t *testing.T) {
 	}
 
 	t.Setenv("HOME", dir)
-	t.Setenv("ZDOTDIR", dir)
 
 	var buf bytes.Buffer
 	if err := Write(&buf, Options{}); err != nil {
@@ -135,7 +41,6 @@ func TestWrite_LineNumbers(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", dir)
-	t.Setenv("ZDOTDIR", dir)
 
 	var buf bytes.Buffer
 	if err := Write(&buf, Options{LineNumbers: true}); err != nil {
@@ -158,7 +63,6 @@ func TestWrite_DedupAnnotation(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", dir)
-	t.Setenv("ZDOTDIR", dir)
 
 	var buf bytes.Buffer
 	if err := Write(&buf, Options{Dedup: true}); err != nil {
@@ -179,6 +83,36 @@ func TestWriteFile_MissingFile(t *testing.T) {
 	}
 	if buf.Len() != 0 {
 		t.Errorf("expected no output for missing file; got:\n%s", buf.String())
+	}
+}
+
+func TestWriteFile_OrphanSuffix(t *testing.T) {
+	dir := t.TempDir()
+	rc := filepath.Join(dir, ".zshrc.old")
+	if err := os.WriteFile(rc, []byte("export X=1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := writeFile(&buf, inventory.File{Path: rc, Role: inventory.RoleOrphan}, Options{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "(orphan)") {
+		t.Errorf("expected orphan suffix in banner; got:\n%s", buf.String())
+	}
+}
+
+func TestWriteFile_BashSuffix(t *testing.T) {
+	dir := t.TempDir()
+	rc := filepath.Join(dir, ".bashrc")
+	if err := os.WriteFile(rc, []byte("export X=1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := writeFile(&buf, inventory.File{Path: rc, Role: inventory.RoleCanonicalBash}, Options{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "(bash)") {
+		t.Errorf("expected bash suffix in banner; got:\n%s", buf.String())
 	}
 }
 
@@ -215,7 +149,6 @@ func TestWrite_BashGated(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", dir)
-	t.Setenv("ZDOTDIR", dir)
 
 	var defaultBuf bytes.Buffer
 	_ = Write(&defaultBuf, Options{})
@@ -227,5 +160,22 @@ func TestWrite_BashGated(t *testing.T) {
 	_ = Write(&bashBuf, Options{IncludeBash: true})
 	if !strings.Contains(bashBuf.String(), ".bashrc") {
 		t.Errorf("with --bash, expected .bashrc in output; got:\n%s", bashBuf.String())
+	}
+}
+
+func TestWrite_DiscoverError(t *testing.T) {
+	orig := inventory.Discover
+	t.Cleanup(func() { inventory.Discover = orig })
+	inventory.Discover = func() ([]inventory.File, error) {
+		return nil, errors.New("mock discover error")
+	}
+
+	var buf bytes.Buffer
+	err := Write(&buf, Options{})
+	if err == nil {
+		t.Fatal("expected error from Write")
+	}
+	if !strings.Contains(err.Error(), "mock discover error") {
+		t.Errorf("expected mock error; got %v", err)
 	}
 }

@@ -2,6 +2,7 @@ package report
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -10,6 +11,18 @@ import (
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
 	"github.com/sreckoskocilic/envocabulary/internal/lost"
 )
+
+var userHomeDir = os.UserHomeDir
+
+func tildePath(path, home string) string {
+	if home == "" {
+		return path
+	}
+	if path == home || strings.HasPrefix(path, home+"/") {
+		return "~" + path[len(home):]
+	}
+	return path
+}
 
 type Entry struct {
 	Definition  string
@@ -33,6 +46,7 @@ type Report struct {
 }
 
 func Build(files []inventory.File) Report {
+	home, _ := userHomeDir()
 	r := Report{
 		Generated:    time.Now(),
 		FilesScanned: len(files),
@@ -44,8 +58,8 @@ func Build(files []inventory.File) Report {
 		for j := range g.Losers {
 			l := &g.Losers[j]
 			def := fmt.Sprintf("%s %s", l.Kind, formatDef(l))
-			loc := shortPath(l.File, l.Line)
-			ref := shortPath(g.Winner.File, g.Winner.Line)
+			loc := shortPath(l.File, l.Line, home)
+			ref := shortPath(g.Winner.File, g.Winner.Line, home)
 
 			if l.Value == g.Winner.Value {
 				r.Safe = append(r.Safe, Entry{
@@ -69,7 +83,7 @@ func Build(files []inventory.File) Report {
 		def := fmt.Sprintf("%s %s", f.Kind, formatDanglingDef(f))
 		r.Dangling = append(r.Dangling, Entry{
 			Definition: def,
-			Location:   shortPath(f.File, f.Line),
+			Location:   shortPath(f.File, f.Line, home),
 			Reference:  f.Value,
 		})
 	}
@@ -85,7 +99,7 @@ func Build(files []inventory.File) Report {
 	}
 	for _, path := range orphanOrder {
 		r.Orphans = append(r.Orphans, OrphanFile{
-			Path:    tildePath(path),
+			Path:    tildePath(path, home),
 			Summary: summarizeFindings(orphanMap[path]),
 		})
 	}
@@ -113,8 +127,8 @@ func formatDanglingDef(f dangling.Finding) string {
 	return f.Name + "=" + f.Value
 }
 
-func shortPath(file string, line int) string {
-	return fmt.Sprintf("%s:%d", tildePath(file), line)
+func shortPath(file string, line int, home string) string {
+	return fmt.Sprintf("%s:%d", tildePath(file, home), line)
 }
 
 func summarizeFindings(findings []lost.Finding) string {

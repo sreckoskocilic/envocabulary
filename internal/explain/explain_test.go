@@ -148,11 +148,51 @@ func TestEmitText_NotPresentButHasWriters(t *testing.T) {
 	}
 }
 
+func TestEmitText_Notes(t *testing.T) {
+	r := Result{
+		Name:    "PATH",
+		Present: true,
+		Origin:  model.OriginDeferred,
+		Notes:   "multi-source; envocabulary path (TODO)",
+	}
+	var buf bytes.Buffer
+	EmitText(&buf, r, false)
+	if !strings.Contains(buf.String(), "multi-source") {
+		t.Errorf("expected notes in output; got:\n%s", buf.String())
+	}
+}
+
 func TestEmitText_NotPresent(t *testing.T) {
 	var buf bytes.Buffer
 	EmitText(&buf, Result{Name: "GONE"}, false)
 	if !strings.Contains(buf.String(), "not in current environment") {
 		t.Errorf("expected not-in-env notice; got:\n%s", buf.String())
+	}
+}
+
+func TestEmitText_MultipleWritersShowValues(t *testing.T) {
+	r := Result{
+		Name:    "FOO",
+		Present: true,
+		Value:   "second",
+		Origin:  model.OriginShellFile,
+		Primary: "/u/.zshrc:20",
+		Writers: []model.TraceEntry{
+			{File: "/u/.zprofile", Line: 5, Raw: "export FOO=first"},
+			{File: "/u/.zshrc", Line: 20, Raw: "export FOO=second"},
+		},
+	}
+	var buf bytes.Buffer
+	EmitText(&buf, r, true)
+	out := buf.String()
+	if !strings.Contains(out, "export FOO=first") {
+		t.Errorf("expected raw for first writer; got:\n%s", out)
+	}
+	if !strings.Contains(out, "export FOO=second  (winner)") {
+		t.Errorf("expected raw+winner marker for last writer; got:\n%s", out)
+	}
+	if !strings.Contains(out, "value    second") {
+		t.Errorf("expected value line; got:\n%s", out)
 	}
 }
 
@@ -175,6 +215,21 @@ func TestEmitJSON_ValuesHidden(t *testing.T) {
 	}
 	if got.Writers[0].Raw != "" {
 		t.Errorf("expected Raw to be cleared without --values, got %q", got.Writers[0].Raw)
+	}
+}
+
+func TestEmitJSON_DoesNotMutateCaller(t *testing.T) {
+	r := Result{
+		Name:    "X",
+		Value:   "secret",
+		Writers: []model.TraceEntry{{File: "/x", Line: 1, Raw: "export X=secret"}},
+	}
+	var buf bytes.Buffer
+	if err := EmitJSON(&buf, r, false); err != nil {
+		t.Fatal(err)
+	}
+	if r.Writers[0].Raw != "export X=secret" {
+		t.Errorf("EmitJSON mutated caller's Writers; Raw = %q", r.Writers[0].Raw)
 	}
 }
 

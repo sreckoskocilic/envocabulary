@@ -2,11 +2,11 @@ package catalog
 
 import (
 	"bufio"
+	"cmp"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/sreckoskocilic/envocabulary/internal/dedup"
@@ -20,19 +20,14 @@ type Options struct {
 	Dedup          bool
 }
 
-var zshLoginOrder = map[string]int{
-	".zshenv":   0,
-	".zprofile": 1,
-	".zshrc":    2,
-	".zlogin":   3,
-	".zlogout":  4,
-}
-
 func Write(w io.Writer, opts Options) error {
-	files := inventory.Discover()
-	keep := filterFiles(files, opts)
-	sort.SliceStable(keep, func(i, j int) bool {
-		return roleOrder(keep[i]) < roleOrder(keep[j])
+	files, err := inventory.Discover()
+	if err != nil {
+		return err
+	}
+	keep := inventory.FilterFiles(files, opts.IncludeBash, opts.IncludeOrphans)
+	slices.SortStableFunc(keep, func(a, b inventory.File) int {
+		return cmp.Compare(inventory.FileRank(a), inventory.FileRank(b))
 	})
 
 	var losers map[string]dedup.Occurrence
@@ -49,49 +44,6 @@ func Write(w io.Writer, opts Options) error {
 		}
 	}
 	return nil
-}
-
-func filterFiles(files []inventory.File, opts Options) []inventory.File {
-	var out []inventory.File
-	for _, f := range files {
-		switch f.Role {
-		case inventory.RoleCanonicalZsh:
-			out = append(out, f)
-		case inventory.RoleCanonicalBash:
-			if opts.IncludeBash {
-				out = append(out, f)
-			}
-		case inventory.RoleOrphan:
-			if opts.IncludeOrphans && isZshOrphan(f.Path, opts.IncludeBash) {
-				out = append(out, f)
-			}
-		}
-	}
-	return out
-}
-
-func isZshOrphan(path string, includeBash bool) bool {
-	name := filepath.Base(path)
-	if strings.Contains(name, "zsh") || strings.HasPrefix(name, ".zsh") || strings.HasPrefix(name, ".zprofile") || strings.HasPrefix(name, ".zlog") {
-		return true
-	}
-	if includeBash {
-		return true
-	}
-	return false
-}
-
-func roleOrder(f inventory.File) int {
-	base := filepath.Base(f.Path)
-	switch f.Role {
-	case inventory.RoleCanonicalZsh:
-		return zshLoginOrder[base]
-	case inventory.RoleCanonicalBash:
-		return 100
-	case inventory.RoleOrphan:
-		return 200
-	}
-	return 999
 }
 
 func writeFile(w io.Writer, f inventory.File, opts Options, losers map[string]dedup.Occurrence) error {

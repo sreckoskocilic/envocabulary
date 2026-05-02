@@ -41,6 +41,9 @@ func TestExpand_Tilde(t *testing.T) {
 	if got := expand("/abs/path"); got != "/abs/path" {
 		t.Errorf("expand(/abs/path) = %q, want %q", got, "/abs/path")
 	}
+	if got := expand("~otheruser/foo"); got != "" {
+		t.Errorf("expand(~otheruser/foo) = %q, want empty (unresolvable)", got)
+	}
 }
 
 func TestFind_SourceSkipsVarExpansion(t *testing.T) {
@@ -204,6 +207,23 @@ func TestFind_OrderPreserved(t *testing.T) {
 		if f.File != wantPaths[i] || f.Line != wantLines[i] {
 			t.Errorf("finding %d: got %s:%d, want %s:%d", i, f.File, f.Line, wantPaths[i], wantLines[i])
 		}
+	}
+}
+
+func TestExpand_HomeError(t *testing.T) {
+	t.Setenv("HOME", "")
+	if got := expand("~"); got != "" {
+		t.Errorf("expand(~) with no HOME should return empty; got %q", got)
+	}
+	if got := expand("~/foo"); got != "" {
+		t.Errorf("expand(~/foo) with no HOME should return empty; got %q", got)
+	}
+}
+
+func TestCheck_UnknownKind(t *testing.T) {
+	_, ok := check("/u/.zshrc", inventory.Item{Kind: "unknown", Name: "X", Line: 1})
+	if ok {
+		t.Error("expected unknown kind to return false")
 	}
 }
 

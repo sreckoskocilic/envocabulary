@@ -97,7 +97,16 @@ func Process(r io.Reader) ([]Decision, Stats, error) {
 }
 
 func Clean(r io.Reader) (string, Stats, error) {
-	decisions, stats, err := Process(r)
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		return "", Stats{}, err
+	}
+	if len(raw) == 0 {
+		return "", Stats{}, nil
+	}
+	trailingNewline := raw[len(raw)-1] == '\n'
+
+	decisions, stats, err := Process(strings.NewReader(string(raw)))
 	if err != nil {
 		return "", stats, err
 	}
@@ -110,7 +119,11 @@ func Clean(r io.Reader) (string, Stats, error) {
 	if len(out) == 0 {
 		return "", stats, nil
 	}
-	return strings.Join(out, "\n") + "\n", stats, nil
+	joined := strings.Join(out, "\n")
+	if trailingNewline {
+		joined += "\n"
+	}
+	return joined, stats, nil
 }
 
 func shouldKeepBlock(block []lineInfo) bool {

@@ -1,8 +1,9 @@
 package attribute
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/sreckoskocilic/envocabulary/internal/buckets"
 	"github.com/sreckoskocilic/envocabulary/internal/model"
@@ -37,11 +38,11 @@ func Attribute(current map[string]string, trace []model.TraceEntry) []model.EnWo
 		out = append(out, w)
 	}
 
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Origin != out[j].Origin {
-			return originRank(out[i].Origin) < originRank(out[j].Origin)
+	slices.SortFunc(out, func(a, b model.EnWord) int {
+		if c := cmp.Compare(originRank(a.Origin), originRank(b.Origin)); c != 0 {
+			return c
 		}
-		return out[i].Name < out[j].Name
+		return cmp.Compare(a.Name, b.Name)
 	})
 	return out
 }

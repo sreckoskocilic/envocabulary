@@ -88,6 +88,19 @@ func TestClean(t *testing.T) {
 	}
 }
 
+func TestClean_PreservesNoTrailingNewline(t *testing.T) {
+	got, _, err := Clean(strings.NewReader("export FOO=1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.HasSuffix(got, "\n") {
+		t.Errorf("expected no trailing newline; got %q", got)
+	}
+	if got != "export FOO=1" {
+		t.Errorf("got %q, want %q", got, "export FOO=1")
+	}
+}
+
 func TestLooksLikeLabel(t *testing.T) {
 	cases := map[string]bool{
 		"aliases":                       true,
@@ -120,6 +133,26 @@ func TestClean_PropagatesProcessError(t *testing.T) {
 	r := &errReader{err: io.ErrUnexpectedEOF}
 	if _, _, err := Clean(r); err == nil {
 		t.Errorf("expected Clean to propagate Process error")
+	}
+}
+
+func TestShouldKeepBlock_MultiLineWithCommentedCode(t *testing.T) {
+	block := []lineInfo{
+		{isComment: true, inner: ""},
+		{isComment: true, inner: "export FOO=bar"},
+	}
+	if shouldKeepBlock(block) {
+		t.Error("block containing commented-out code should be stripped")
+	}
+}
+
+func TestShouldKeepBlock_MultiLineProseNoLabel(t *testing.T) {
+	block := []lineInfo{
+		{isComment: true, inner: "If you come from bash you might have to change things."},
+		{isComment: true, inner: "This is another long explanation that is definitely prose."},
+	}
+	if shouldKeepBlock(block) {
+		t.Error("multi-line prose without a label should be stripped")
 	}
 }
 
