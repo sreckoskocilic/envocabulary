@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sreckoskocilic/envocabulary/internal/dangling"
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
 )
 
@@ -200,6 +201,25 @@ func TestWriteHTMLEmptySections(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "none") {
 		t.Error("expected 'none' for empty sections in HTML")
+	}
+}
+
+func TestFormatDanglingDef(t *testing.T) {
+	cases := []struct {
+		name string
+		in   dangling.Finding
+		want string
+	}{
+		{"source uses value", dangling.Finding{Kind: inventory.KindSource, Name: "src", Value: "/missing/file"}, "/missing/file"},
+		{"export with value", dangling.Finding{Kind: inventory.KindExport, Name: "FOO", Value: "/gone"}, "FOO=/gone"},
+		{"export empty value", dangling.Finding{Kind: inventory.KindExport, Name: "FOO"}, "FOO"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := formatDanglingDef(tc.in); got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
