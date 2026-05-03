@@ -38,6 +38,7 @@ Live env (introspects your running shell):
 
 - `scan` *(default)* — prints all variables in the current env grouped by origin
 - `explain NAME` — prints full attribution for provided variable
+- `path [VARNAME...]` — per-entry attribution for colon-separated path variables
 
 Static files:
 
@@ -61,11 +62,27 @@ Static files:
       ~/.zshrc:42  export JAVA_HOME  → /opt/jdk-11  (path does not exist)
 
 
+## Another example: tracing PATH entries
+
+`path` shows where each entry in `PATH` (or `MANPATH`, `FPATH`, etc.) was introduced:
+
+    $ envocabulary path PATH
+    ## PATH
+      /opt/homebrew/bin       ~/.zprofile:21
+      /usr/local/bin          ~/.zprofile:1
+      /usr/bin                /etc/zprofile:1
+      /bin                    /etc/zprofile:1
+      /usr/sbin               /etc/zprofile:1
+      /sbin                   /etc/zprofile:1
+      ~/.cargo/bin            ~/.zshrc:22
+
+Entries not matched to any shell startup assignment are shown as `inherited`.
+
 ## Limits
 
-- **Colon-accumulated vars are not attributed** (`PATH`, `MANPATH`, `FPATH` — constructed from multiple expressions across files).
 - **One assignment per line** (`export EDITOR=vim VISUAL=vim` records `EDITOR` only).
 - **`dangling` will not resolve PATH-like assignments or expansions** (`export GOPATH=$HOME/go`).
+- **`path` attribution is based on xtrace diffs** — the first assignment that includes an entry claims it, even if it was carried forward via `$PATH` expansion rather than explicitly added.
 - **Unsupported shells:** fish, nu, csh/tcsh, PowerShell.
 
 ## Read-only by design

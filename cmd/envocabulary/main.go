@@ -90,7 +90,7 @@ Live-env (introspects the running shell):
   explain [--json] [--values] [--chain] [--shell SHELL] NAME
       Prints full attribution for provided variable.
 
-  path [--json] [--chain] [--shell SHELL] [VARNAME...]
+  path [--json] [--chain] [--check] [--shell SHELL] [VARNAME...]
       Per-entry attribution for colon-separated path variables.
 
 Static-file:
@@ -731,7 +731,7 @@ func helpPath(w io.Writer) {
 	fmt.Fprint(w, `envocabulary path — per-entry attribution for colon-separated path variables
 
 Usage:
-  envocabulary path [--json] [--chain] [--shell SHELL] [VARNAME...]
+  envocabulary path [--json] [--chain] [--check] [--shell SHELL] [VARNAME...]
 
 Shows where each entry in PATH, MANPATH, FPATH, etc. was introduced.
 
@@ -741,11 +741,13 @@ Arguments:
 Flags:
   --json          emit JSON
   --chain         show source chain
+  --check         show only entries whose directory does not exist (exit 1 if any)
   --shell SHELL   force tracer (zsh|bash); default auto-detects
 
 Examples:
   envocabulary path
   envocabulary path PATH
+  envocabulary path --check
   envocabulary path --chain PATH MANPATH
   envocabulary path --json | jq
 `)
@@ -757,6 +759,7 @@ func runPath(args []string, stdout, stderr io.Writer) int {
 	fs.Usage = func() { helpPath(stdout) }
 	jsonOut := fs.Bool("json", false, "emit JSON")
 	showChain := fs.Bool("chain", false, "show source chain")
+	checkExists := fs.Bool("check", false, "show only entries whose directory does not exist")
 	shellFlag := fs.String("shell", "", "force tracer (zsh|bash); default auto-detects from $SHELL")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -795,8 +798,39 @@ func runPath(args []string, stdout, stderr io.Writer) int {
 	for _, name := range varNames {
 		r := pathentry.Attribute(name, current[name], trace)
 		if len(r.Entries) > 0 {
+			pathentry.CheckExists(r.Entries)
 			results = append(results, r)
 		}
+	}
+
+	if *checkExists {
+		var filtered []pathentry.VarBreakdown
+		for _, r := range results {
+			var dead []pathentry.Entry
+			for _, e := range r.Entries {
+				if e.Exists != nil && !*e.Exists {
+					dead = append(dead, e)
+				}
+			}
+			if len(dead) > 0 {
+				filtered = append(filtered, pathentry.VarBreakdown{Name: r.Name, Entries: dead})
+			}
+		}
+		if len(filtered) == 0 {
+			fmt.Fprintln(stdout, "no dead path entries found")
+			return 0
+		}
+		if files, err := inventory.Discover(); err == nil {
+			overrideFromConfig(filtered, files)
+		}
+		if *jsonOut {
+			if code := emitPathJSON(stdout, stderr, filtered); code != 0 {
+				return code
+			}
+			return 1
+		}
+		emitPathText(stdout, filtered, *showChain)
+		return 1
 	}
 
 	if len(results) == 0 {
@@ -809,6 +843,77 @@ func runPath(args []string, stdout, stderr io.Writer) int {
 	}
 	emitPathText(stdout, results, *showChain)
 	return 0
+}
+
+func overrideFromConfig(results []pathentry.VarBreakdown, files []inventory.File) {
+	pathsFiles := scanPathsD()
+	for i, r := range results {
+		for j, e := range r.Entries {
+			if findConfigRef(&results[i].Entries[j], e.Dir, files) {
+				continue
+			}
+			findPathsDRef(&results[i].Entries[j], e.Dir, pathsFiles)
+		}
+	}
+}
+
+func findConfigRef(entry *pathentry.Entry, dir string, files []inventory.File) bool {
+	for _, f := range files {
+		for _, item := range f.Items {
+			if (item.Kind == inventory.KindExport || item.Kind == inventory.KindAssign) &&
+				strings.Contains(item.Value, dir) {
+				entry.File = f.Path
+				entry.Line = item.Line
+				return true
+			}
+		}
+	}
+	return false
+}
+
+type pathsDEntry struct {
+	File string
+	Line int
+	Dir  string
+}
+
+var scanPathsD = scanPathsDFiles
+
+func scanPathsDFiles() []pathsDEntry {
+	var entries []pathsDEntry
+	readLines := func(path string) {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return
+		}
+		for i, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				entries = append(entries, pathsDEntry{File: path, Line: i + 1, Dir: line})
+			}
+		}
+	}
+	readLines("/etc/paths")
+	dirEntries, err := os.ReadDir("/etc/paths.d")
+	if err != nil {
+		return entries
+	}
+	for _, de := range dirEntries {
+		if !de.IsDir() {
+			readLines("/etc/paths.d/" + de.Name())
+		}
+	}
+	return entries
+}
+
+func findPathsDRef(entry *pathentry.Entry, dir string, pathsFiles []pathsDEntry) {
+	for _, p := range pathsFiles {
+		if p.Dir == dir || strings.HasPrefix(p.Dir, dir+" ") {
+			entry.File = p.File
+			entry.Line = p.Line
+			return
+		}
+	}
 }
 
 func emitPathText(w io.Writer, results []pathentry.VarBreakdown, showChain bool) {
@@ -834,7 +939,11 @@ func emitPathText(w io.Writer, results []pathentry.VarBreakdown, showChain bool)
 			if showChain && len(e.Chain) > 0 {
 				chainInfo = fmt.Sprintf("  (via %s)", strings.Join(e.Chain, " → "))
 			}
-			fmt.Fprintf(w, "  %-*s  %s%s\n", maxDir, e.Dir, source, chainInfo)
+			deadInfo := ""
+			if e.Exists != nil && !*e.Exists {
+				deadInfo = "  (does not exist)"
+			}
+			fmt.Fprintf(w, "  %-*s  %s%s%s\n", maxDir, e.Dir, source, chainInfo, deadInfo)
 		}
 	}
 }

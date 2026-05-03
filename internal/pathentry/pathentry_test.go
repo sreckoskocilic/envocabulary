@@ -1,6 +1,8 @@
 package pathentry
 
 import (
+	"errors"
+	"os"
 	"testing"
 
 	"github.com/sreckoskocilic/envocabulary/internal/model"
@@ -232,4 +234,33 @@ func TestAttribute_DuplicateEntriesInCurrentValue(t *testing.T) {
 			t.Errorf("got file %q, want /u/.zshrc", e.File)
 		}
 	}
+}
+
+func TestCheckExists(t *testing.T) {
+	existing := map[string]bool{"/usr/bin": true, "/opt/dead": false}
+	orig := statDir
+	statDir = func(name string) (os.FileInfo, error) {
+		if existing[name] {
+			return nil, nil
+		}
+		return nil, errors.New("not found")
+	}
+	t.Cleanup(func() { statDir = orig })
+
+	entries := []Entry{
+		{Dir: "/usr/bin"},
+		{Dir: "/opt/dead"},
+	}
+	CheckExists(entries)
+
+	if entries[0].Exists == nil || !*entries[0].Exists {
+		t.Errorf("/usr/bin: want exists=true, got %v", entries[0].Exists)
+	}
+	if entries[1].Exists == nil || *entries[1].Exists {
+		t.Errorf("/opt/dead: want exists=false, got %v", entries[1].Exists)
+	}
+}
+
+func TestCheckExists_Empty(t *testing.T) {
+	CheckExists(nil)
 }

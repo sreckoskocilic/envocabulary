@@ -1221,6 +1221,201 @@ func TestEmitPathText_MultipleVars(t *testing.T) {
 	}
 }
 
+func TestRunPath_CheckFinds(t *testing.T) {
+	existing := t.TempDir()
+	dead := "/tmp/envocabulary-nonexistent-" + t.Name()
+	stubCurrentEnv(t, map[string]string{"PATH": existing + ":" + dead}, nil)
+	var stdout, stderr bytes.Buffer
+	code := runPath([]string{"--check", "PATH"}, &stdout, &stderr)
+	if code != 1 {
+		t.Errorf("expected exit 1 when dead entries found, got %d", code)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, dead) {
+		t.Errorf("expected dead path in output; got:\n%s", out)
+	}
+	if strings.Contains(out, existing) {
+		t.Errorf("existing path should not appear in --check output; got:\n%s", out)
+	}
+}
+
+func TestRunPath_CheckClean(t *testing.T) {
+	existing := t.TempDir()
+	stubCurrentEnv(t, map[string]string{"PATH": existing}, nil)
+	var stdout, stderr bytes.Buffer
+	code := runPath([]string{"--check", "PATH"}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("expected exit 0 when no dead entries, got %d", code)
+	}
+	if !strings.Contains(stdout.String(), "no dead path entries found") {
+		t.Errorf("expected clean message; got:\n%s", stdout.String())
+	}
+}
+
+func TestRunPath_CheckJSON(t *testing.T) {
+	dead := "/tmp/envocabulary-nonexistent-" + t.Name()
+	stubCurrentEnv(t, map[string]string{"PATH": dead}, nil)
+	var stdout, stderr bytes.Buffer
+	code := runPath([]string{"--check", "--json", "PATH"}, &stdout, &stderr)
+	if code != 1 {
+		t.Errorf("expected exit 1, got %d", code)
+	}
+	var result []map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Errorf("invalid JSON: %v\noutput: %s", err, stdout.String())
+	}
+}
+
+func TestEmitPathText_DeadAnnotation(t *testing.T) {
+	exists := true
+	dead := false
+	results := []pathentry.VarBreakdown{
+		{
+			Name: "PATH",
+			Entries: []pathentry.Entry{
+				{Dir: "/usr/bin", File: "/u/.zshrc", Line: 3, Exists: &exists},
+				{Dir: "/opt/dead", File: "/u/.zshrc", Line: 5, Exists: &dead},
+			},
+		},
+	}
+	var buf bytes.Buffer
+	emitPathText(&buf, results, false)
+	out := buf.String()
+	if !strings.Contains(out, "(does not exist)") {
+		t.Errorf("expected dead annotation; got:\n%s", out)
+	}
+	if strings.Contains(out, "/usr/bin") && strings.Contains(out, "/usr/bin  /u/.zshrc:3  (does not exist)") {
+		t.Errorf("existing entry should not have dead annotation")
+	}
+}
+
+func TestOverrideFromConfig(t *testing.T) {
+	dead := false
+	results := []pathentry.VarBreakdown{
+		{
+			Name: "PATH",
+			Entries: []pathentry.Entry{
+				{Dir: "/opt/dead", File: "/etc/zprofile", Line: 1, Exists: &dead},
+				{Dir: "/gone/bin", File: "/etc/zprofile", Line: 1, Exists: &dead},
+			},
+		},
+	}
+	files := []inventory.File{
+		{
+			Path: "/u/.zshrc",
+			Items: []inventory.Item{
+				{Kind: inventory.KindExport, Name: "PATH", Line: 10, Value: "/opt/dead:$PATH"},
+			},
+		},
+	}
+	overrideFromConfig(results, files)
+	if results[0].Entries[0].File != "/u/.zshrc" || results[0].Entries[0].Line != 10 {
+		t.Errorf("/opt/dead: got %s:%d, want /u/.zshrc:10", results[0].Entries[0].File, results[0].Entries[0].Line)
+	}
+	if results[0].Entries[1].File != "/etc/zprofile" {
+		t.Errorf("/gone/bin: should keep original when no config match; got %s", results[0].Entries[1].File)
+	}
+}
+
+func TestOverrideFromConfig_SkipsNonExportAssign(t *testing.T) {
+	dead := false
+	results := []pathentry.VarBreakdown{
+		{
+			Name: "PATH",
+			Entries: []pathentry.Entry{
+				{Dir: "/opt/dead", File: "/etc/zprofile", Line: 1, Exists: &dead},
+			},
+		},
+	}
+	files := []inventory.File{
+		{
+			Path: "/u/.zshrc",
+			Items: []inventory.Item{
+				{Kind: inventory.KindAlias, Name: "mypath", Line: 5, Value: "/opt/dead"},
+				{Kind: inventory.KindSource, Name: "/opt/dead/init.sh", Line: 7},
+			},
+		},
+	}
+	overrideFromConfig(results, files)
+	if results[0].Entries[0].File != "/etc/zprofile" {
+		t.Errorf("should not match alias/source; got %s", results[0].Entries[0].File)
+	}
+}
+
+func TestFindPathsDRef_ExactMatch(t *testing.T) {
+	entry := pathentry.Entry{Dir: "/opt/dead", File: "/etc/zprofile", Line: 1}
+	refs := []pathsDEntry{{File: "/etc/paths.d/foo", Line: 2, Dir: "/opt/dead"}}
+	findPathsDRef(&entry, "/opt/dead", refs)
+	if entry.File != "/etc/paths.d/foo" || entry.Line != 2 {
+		t.Errorf("got %s:%d, want /etc/paths.d/foo:2", entry.File, entry.Line)
+	}
+}
+
+func TestFindPathsDRef_PrefixMatch(t *testing.T) {
+	entry := pathentry.Entry{Dir: "/Applications/VMware", File: "/etc/zprofile", Line: 1}
+	refs := []pathsDEntry{{File: "/etc/paths.d/vmware", Line: 1, Dir: "/Applications/VMware Fusion.app/Contents/Public"}}
+	findPathsDRef(&entry, "/Applications/VMware", refs)
+	if entry.File != "/etc/paths.d/vmware" || entry.Line != 1 {
+		t.Errorf("got %s:%d, want /etc/paths.d/vmware:1", entry.File, entry.Line)
+	}
+}
+
+func TestFindPathsDRef_NoMatch(t *testing.T) {
+	entry := pathentry.Entry{Dir: "/nope", File: "/etc/zprofile", Line: 1}
+	refs := []pathsDEntry{{File: "/etc/paths.d/foo", Line: 1, Dir: "/opt/other"}}
+	findPathsDRef(&entry, "/nope", refs)
+	if entry.File != "/etc/zprofile" {
+		t.Errorf("should keep original; got %s", entry.File)
+	}
+}
+
+func TestOverrideFromConfig_FallsBackToPathsD(t *testing.T) {
+	dead := false
+	results := []pathentry.VarBreakdown{
+		{
+			Name: "PATH",
+			Entries: []pathentry.Entry{
+				{Dir: "/opt/system", File: "/etc/zprofile", Line: 1, Exists: &dead},
+			},
+		},
+	}
+	orig := scanPathsD
+	scanPathsD = func() []pathsDEntry {
+		return []pathsDEntry{{File: "/etc/paths.d/sys", Line: 1, Dir: "/opt/system"}}
+	}
+	t.Cleanup(func() { scanPathsD = orig })
+	overrideFromConfig(results, nil)
+	if results[0].Entries[0].File != "/etc/paths.d/sys" {
+		t.Errorf("expected paths.d fallback; got %s", results[0].Entries[0].File)
+	}
+}
+
+func TestRunPath_CheckUsesConfigOverride(t *testing.T) {
+	dead := "/tmp/envocabulary-nonexistent-" + t.Name()
+	stubCurrentEnv(t, map[string]string{"PATH": dead}, nil)
+	orig := inventory.Discover
+	inventory.Discover = func() ([]inventory.File, error) {
+		return []inventory.File{
+			{
+				Path: "/u/.zshrc",
+				Items: []inventory.Item{
+					{Kind: inventory.KindExport, Name: "PATH", Line: 42, Value: dead + ":$PATH"},
+				},
+			},
+		}, nil
+	}
+	t.Cleanup(func() { inventory.Discover = orig })
+	var stdout, stderr bytes.Buffer
+	code := runPath([]string{"--check", "PATH"}, &stdout, &stderr)
+	if code != 1 {
+		t.Errorf("expected exit 1, got %d", code)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "/u/.zshrc:42") {
+		t.Errorf("expected config override to /u/.zshrc:42; got:\n%s", out)
+	}
+}
+
 func TestRunCatalog_DiscoverError(t *testing.T) {
 	stubDiscoverError(t)
 	var stdout, stderr bytes.Buffer

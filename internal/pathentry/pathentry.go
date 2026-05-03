@@ -1,16 +1,28 @@
 package pathentry
 
 import (
+	"os"
 	"strings"
 
 	"github.com/sreckoskocilic/envocabulary/internal/model"
 )
 
 type Entry struct {
-	Dir   string   `json:"dir"`
-	File  string   `json:"file,omitempty"`
-	Line  int      `json:"line,omitempty"`
-	Chain []string `json:"chain,omitempty"`
+	Dir    string   `json:"dir"`
+	File   string   `json:"file,omitempty"`
+	Line   int      `json:"line,omitempty"`
+	Chain  []string `json:"chain,omitempty"`
+	Exists *bool    `json:"exists,omitempty"`
+}
+
+var statDir = os.Stat
+
+func CheckExists(entries []Entry) {
+	for i := range entries {
+		_, err := statDir(entries[i].Dir)
+		b := err == nil
+		entries[i].Exists = &b
+	}
 }
 
 type VarBreakdown struct {
