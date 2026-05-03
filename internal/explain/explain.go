@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/sreckoskocilic/envocabulary/internal/buckets"
 	"github.com/sreckoskocilic/envocabulary/internal/model"
@@ -57,7 +58,7 @@ func Explain(name string, current map[string]string, trace []model.TraceEntry) R
 	return r
 }
 
-func EmitText(w io.Writer, r Result, showValues bool) {
+func EmitText(w io.Writer, r Result, showValues, showChain bool) {
 	fmt.Fprintln(w, r.Name)
 
 	if !r.Present {
@@ -73,20 +74,15 @@ func EmitText(w io.Writer, r Result, showValues bool) {
 	if r.Primary != "" {
 		fmt.Fprintf(w, "  primary  %s\n", r.Primary)
 	}
+	if showChain && len(r.Writers) > 0 {
+		last := r.Writers[len(r.Writers)-1]
+		if len(last.Chain) > 0 {
+			fmt.Fprintf(w, "  chain    %s → %s\n", strings.Join(last.Chain, " → "), last.File)
+		}
+	}
 
 	if len(r.Writers) > 1 {
-		fmt.Fprintln(w, "  writers")
-		for i, e := range r.Writers {
-			marker := ""
-			if i == len(r.Writers)-1 {
-				marker = "  (winner)"
-			}
-			if showValues {
-				fmt.Fprintf(w, "    %s:%d  %s%s\n", e.File, e.Line, e.Raw, marker)
-			} else {
-				fmt.Fprintf(w, "    %s:%d%s\n", e.File, e.Line, marker)
-			}
-		}
+		emitWriters(w, r.Writers, showValues, showChain)
 	} else if len(r.Writers) == 1 && showValues {
 		fmt.Fprintf(w, "  raw      %s\n", r.Writers[0].Raw)
 	}
@@ -99,6 +95,25 @@ func EmitText(w io.Writer, r Result, showValues bool) {
 		fmt.Fprintf(w, "  value    %s\n", r.Value)
 	} else if r.Present {
 		fmt.Fprintln(w, "  value    [hidden, use --values]")
+	}
+}
+
+func emitWriters(w io.Writer, writers []model.TraceEntry, showValues, showChain bool) {
+	fmt.Fprintln(w, "  writers")
+	for i, e := range writers {
+		marker := ""
+		if i == len(writers)-1 {
+			marker = "  (winner)"
+		}
+		chainInfo := ""
+		if showChain && len(e.Chain) > 0 {
+			chainInfo = fmt.Sprintf("  (via %s)", strings.Join(e.Chain, " → "))
+		}
+		if showValues {
+			fmt.Fprintf(w, "    %s:%d  %s%s%s\n", e.File, e.Line, e.Raw, marker, chainInfo)
+		} else {
+			fmt.Fprintf(w, "    %s:%d%s%s\n", e.File, e.Line, marker, chainInfo)
+		}
 	}
 }
 

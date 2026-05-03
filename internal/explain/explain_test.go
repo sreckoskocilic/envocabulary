@@ -98,7 +98,7 @@ func TestEmitText_WinnerMarkerOnLastWriter(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	EmitText(&buf, r, false)
+	EmitText(&buf, r, false, false)
 	out := buf.String()
 	if !strings.Contains(out, "/u/.zshrc:20  (winner)") {
 		t.Errorf("expected winner marker on last writer; got:\n%s", out)
@@ -117,7 +117,7 @@ func TestEmitText_ShowValues(t *testing.T) {
 		Writers: []model.TraceEntry{{File: "/u/.zshrc", Line: 1, Raw: "export FOO=bar"}},
 	}
 	var buf bytes.Buffer
-	EmitText(&buf, r, true)
+	EmitText(&buf, r, true, false)
 	out := buf.String()
 	if !strings.Contains(out, "value    bar") {
 		t.Errorf("expected value to appear; got:\n%s", out)
@@ -138,7 +138,7 @@ func TestEmitText_NotPresentButHasWriters(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	EmitText(&buf, r, false)
+	EmitText(&buf, r, false, false)
 	out := buf.String()
 	if !strings.Contains(out, "not in current environment") {
 		t.Errorf("expected not-in-env line; got:\n%s", out)
@@ -156,7 +156,7 @@ func TestEmitText_Notes(t *testing.T) {
 		Notes:   "multi-source; envocabulary path (TODO)",
 	}
 	var buf bytes.Buffer
-	EmitText(&buf, r, false)
+	EmitText(&buf, r, false, false)
 	if !strings.Contains(buf.String(), "multi-source") {
 		t.Errorf("expected notes in output; got:\n%s", buf.String())
 	}
@@ -164,7 +164,7 @@ func TestEmitText_Notes(t *testing.T) {
 
 func TestEmitText_NotPresent(t *testing.T) {
 	var buf bytes.Buffer
-	EmitText(&buf, Result{Name: "GONE"}, false)
+	EmitText(&buf, Result{Name: "GONE"}, false, false)
 	if !strings.Contains(buf.String(), "not in current environment") {
 		t.Errorf("expected not-in-env notice; got:\n%s", buf.String())
 	}
@@ -183,7 +183,7 @@ func TestEmitText_MultipleWritersShowValues(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	EmitText(&buf, r, true)
+	EmitText(&buf, r, true, false)
 	out := buf.String()
 	if !strings.Contains(out, "export FOO=first") {
 		t.Errorf("expected raw for first writer; got:\n%s", out)
@@ -241,5 +241,96 @@ func TestEmitJSON_ValuesShown(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "secret") {
 		t.Errorf("expected value to appear with --values; got:\n%s", buf.String())
+	}
+}
+
+func TestEmitText_ChainShown(t *testing.T) {
+	r := Result{
+		Name:    "FOO",
+		Present: true,
+		Origin:  model.OriginShellFile,
+		Primary: "/u/helpers.sh:3",
+		Writers: []model.TraceEntry{
+			{File: "/u/helpers.sh", Line: 3, Chain: []string{"/u/.zshrc"}},
+		},
+	}
+	var buf bytes.Buffer
+	EmitText(&buf, r, false, true)
+	out := buf.String()
+	if !strings.Contains(out, "chain    /u/.zshrc → /u/helpers.sh") {
+		t.Errorf("expected chain line; got:\n%s", out)
+	}
+}
+
+func TestEmitText_ChainHiddenWithoutFlag(t *testing.T) {
+	r := Result{
+		Name:    "FOO",
+		Present: true,
+		Origin:  model.OriginShellFile,
+		Primary: "/u/helpers.sh:3",
+		Writers: []model.TraceEntry{
+			{File: "/u/helpers.sh", Line: 3, Chain: []string{"/u/.zshrc"}},
+		},
+	}
+	var buf bytes.Buffer
+	EmitText(&buf, r, false, false)
+	if strings.Contains(buf.String(), "chain") {
+		t.Errorf("expected no chain without flag; got:\n%s", buf.String())
+	}
+}
+
+func TestEmitText_ChainOmittedForTopLevel(t *testing.T) {
+	r := Result{
+		Name:    "FOO",
+		Present: true,
+		Origin:  model.OriginShellFile,
+		Primary: "/u/.zshrc:5",
+		Writers: []model.TraceEntry{
+			{File: "/u/.zshrc", Line: 5},
+		},
+	}
+	var buf bytes.Buffer
+	EmitText(&buf, r, false, true)
+	if strings.Contains(buf.String(), "chain") {
+		t.Errorf("expected no chain for top-level file; got:\n%s", buf.String())
+	}
+}
+
+func TestEmitText_MultiWriterChain(t *testing.T) {
+	r := Result{
+		Name:    "FOO",
+		Present: true,
+		Origin:  model.OriginShellFile,
+		Primary: "/u/helpers.sh:3",
+		Writers: []model.TraceEntry{
+			{File: "/u/.zprofile", Line: 10},
+			{File: "/u/helpers.sh", Line: 3, Chain: []string{"/u/.zshrc"}},
+		},
+	}
+	var buf bytes.Buffer
+	EmitText(&buf, r, false, true)
+	out := buf.String()
+	if !strings.Contains(out, "chain    /u/.zshrc → /u/helpers.sh") {
+		t.Errorf("expected primary chain; got:\n%s", out)
+	}
+	if !strings.Contains(out, "(via /u/.zshrc)") {
+		t.Errorf("expected per-writer chain annotation; got:\n%s", out)
+	}
+}
+
+func TestEmitJSON_ChainIncluded(t *testing.T) {
+	r := Result{
+		Name:    "FOO",
+		Present: true,
+		Writers: []model.TraceEntry{
+			{File: "/u/helpers.sh", Line: 3, Chain: []string{"/u/.zshrc"}},
+		},
+	}
+	var buf bytes.Buffer
+	if err := EmitJSON(&buf, r, false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `"chain"`) {
+		t.Errorf("expected chain in JSON; got:\n%s", buf.String())
 	}
 }
