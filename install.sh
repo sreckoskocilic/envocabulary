@@ -147,14 +147,11 @@ fi
 # --- optional cosign signature verification -----------------------------------
 
 if command -v cosign >/dev/null 2>&1; then
-    SIG_URL="$BASE_URL/$CHECKSUMS.sig"
-    CERT_URL="$BASE_URL/$CHECKSUMS.pem"
-    if curl -fsSL "$SIG_URL" -o "$TMP/$CHECKSUMS.sig" 2>/dev/null && \
-       curl -fsSL "$CERT_URL" -o "$TMP/$CHECKSUMS.pem" 2>/dev/null; then
+    BUNDLE_URL="$BASE_URL/$CHECKSUMS.bundle"
+    if curl -fsSL "$BUNDLE_URL" -o "$TMP/$CHECKSUMS.bundle" 2>/dev/null; then
         echo "Verifying cosign signature..."
         if cosign verify-blob \
-            --certificate "$TMP/$CHECKSUMS.pem" \
-            --signature "$TMP/$CHECKSUMS.sig" \
+            --bundle "$TMP/$CHECKSUMS.bundle" \
             --certificate-identity-regexp "https://github.com/$REPO" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
             "$TMP/$CHECKSUMS" >/dev/null 2>&1; then
@@ -164,7 +161,7 @@ if command -v cosign >/dev/null 2>&1; then
             exit 1
         fi
     else
-        echo "  (cosign signature files not found in release; skipping signature check)"
+        echo "  (cosign bundle not found in release; skipping signature check)"
     fi
 else
     echo "  (cosign not installed; skipping signature verification)"
