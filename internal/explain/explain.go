@@ -35,7 +35,7 @@ func Explain(name string, current map[string]string, trace []model.TraceEntry) R
 	switch {
 	case model.IsDeferredListVar(name):
 		r.Origin = model.OriginDeferred
-		r.Notes = "multi-source; envocabulary path (TODO)"
+		r.Notes = "multi-source; use: envocabulary path"
 
 	case model.IsDirenvVar(name):
 		r.Origin = model.OriginDirenv

@@ -153,7 +153,7 @@ func TestEmitText_Notes(t *testing.T) {
 		Name:    "PATH",
 		Present: true,
 		Origin:  model.OriginDeferred,
-		Notes:   "multi-source; envocabulary path (TODO)",
+		Notes:   "multi-source; use: envocabulary path",
 	}
 	var buf bytes.Buffer
 	EmitText(&buf, r, false, false)

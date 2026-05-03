@@ -16,6 +16,7 @@ import (
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
 	"github.com/sreckoskocilic/envocabulary/internal/lost"
 	"github.com/sreckoskocilic/envocabulary/internal/model"
+	"github.com/sreckoskocilic/envocabulary/internal/pathentry"
 )
 
 func TestTruncate(t *testing.T) {
@@ -259,7 +260,7 @@ func TestRun_UnknownCommand(t *testing.T) {
 }
 
 func TestUsageAndHelpFunctionsAllOutput(t *testing.T) {
-	helpers := []func(io.Writer){usage, helpScan, helpExplain, helpInventory, helpCatalog, helpDedup, helpDangling, helpLost, helpClean, helpReport}
+	helpers := []func(io.Writer){usage, helpScan, helpExplain, helpPath, helpInventory, helpCatalog, helpDedup, helpDangling, helpLost, helpClean, helpReport}
 	for i, h := range helpers {
 		var buf bytes.Buffer
 		h(&buf)
@@ -1076,6 +1077,147 @@ func TestRun_DispatchToExplain(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "EDITOR") {
 		t.Errorf("expected EDITOR in explain output; got:\n%s", stdout.String())
+	}
+}
+
+func TestRun_DispatchToPath(t *testing.T) {
+	stubCurrentEnv(t, map[string]string{"PATH": "/usr/bin:/usr/local/bin"}, nil)
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"path", "PATH"}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("expected 0; got %d; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "PATH") {
+		t.Errorf("expected PATH in output; got:\n%s", stdout.String())
+	}
+}
+
+func TestRunPath_FlagParseError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runPath([]string{"--bogus"}, &stdout, &stderr)
+	if code != 2 {
+		t.Errorf("expected 2, got %d", code)
+	}
+}
+
+func TestRunPath_BadShellFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runPath([]string{"--shell", "fish"}, &stdout, &stderr)
+	if code != 2 {
+		t.Errorf("expected 2, got %d", code)
+	}
+}
+
+func TestRunPath_CurrentEnvError(t *testing.T) {
+	stubCurrentEnv(t, nil, errors.New("mock env error"))
+	var stdout, stderr bytes.Buffer
+	code := runPath([]string{"PATH"}, &stdout, &stderr)
+	if code != 1 {
+		t.Errorf("expected 1, got %d", code)
+	}
+}
+
+func TestRunPath_TextOutput(t *testing.T) {
+	stubCurrentEnv(t, map[string]string{"PATH": "/usr/bin:/opt/local/bin"}, nil)
+	var stdout, stderr bytes.Buffer
+	code := runPath([]string{"PATH"}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("expected 0, got %d; stderr: %s", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "## PATH") {
+		t.Errorf("expected PATH header; got:\n%s", out)
+	}
+	if !strings.Contains(out, "/usr/bin") || !strings.Contains(out, "/opt/local/bin") {
+		t.Errorf("expected path entries; got:\n%s", out)
+	}
+}
+
+func TestRunPath_JSONOutput(t *testing.T) {
+	stubCurrentEnv(t, map[string]string{"PATH": "/usr/bin"}, nil)
+	var stdout, stderr bytes.Buffer
+	code := runPath([]string{"--json", "PATH"}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("expected 0, got %d; stderr: %s", code, stderr.String())
+	}
+	var result []map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Errorf("invalid JSON: %v\noutput: %s", err, stdout.String())
+	}
+}
+
+func TestRunPath_NoEntriesFound(t *testing.T) {
+	stubCurrentEnv(t, map[string]string{"FOO": "bar"}, nil)
+	var stdout, stderr bytes.Buffer
+	code := runPath(nil, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("expected 0, got %d", code)
+	}
+	if !strings.Contains(stdout.String(), "no path entries found") {
+		t.Errorf("expected empty-state notice; got:\n%s", stdout.String())
+	}
+}
+
+func TestRunPath_JSONEncodeError(t *testing.T) {
+	stubCurrentEnv(t, map[string]string{"PATH": "/usr/bin"}, nil)
+	w := &limitWriter{limit: 5}
+	var stderr bytes.Buffer
+	code := runPath([]string{"--json", "PATH"}, w, &stderr)
+	if code != 1 {
+		t.Errorf("expected 1 for encode error, got %d", code)
+	}
+}
+
+func TestEmitPathText(t *testing.T) {
+	results := []pathentry.VarBreakdown{
+		{
+			Name: "PATH",
+			Entries: []pathentry.Entry{
+				{Dir: "/opt/homebrew/bin", File: "/u/.zshrc", Line: 3},
+				{Dir: "/usr/bin"},
+			},
+		},
+	}
+	var buf bytes.Buffer
+	emitPathText(&buf, results, false)
+	out := buf.String()
+	if !strings.Contains(out, "## PATH") {
+		t.Errorf("expected header; got:\n%s", out)
+	}
+	if !strings.Contains(out, "/u/.zshrc:3") {
+		t.Errorf("expected source; got:\n%s", out)
+	}
+	if !strings.Contains(out, "inherited") {
+		t.Errorf("expected inherited marker; got:\n%s", out)
+	}
+}
+
+func TestEmitPathText_Chain(t *testing.T) {
+	results := []pathentry.VarBreakdown{
+		{
+			Name: "PATH",
+			Entries: []pathentry.Entry{
+				{Dir: "/usr/bin", File: "/u/helpers.sh", Line: 5, Chain: []string{"/u/.zshrc"}},
+			},
+		},
+	}
+	var buf bytes.Buffer
+	emitPathText(&buf, results, true)
+	if !strings.Contains(buf.String(), "(via /u/.zshrc)") {
+		t.Errorf("expected chain annotation; got:\n%s", buf.String())
+	}
+}
+
+func TestEmitPathText_MultipleVars(t *testing.T) {
+	results := []pathentry.VarBreakdown{
+		{Name: "MANPATH", Entries: []pathentry.Entry{{Dir: "/usr/share/man"}}},
+		{Name: "PATH", Entries: []pathentry.Entry{{Dir: "/usr/bin"}}},
+	}
+	var buf bytes.Buffer
+	emitPathText(&buf, results, false)
+	out := buf.String()
+	if !strings.Contains(out, "## MANPATH") || !strings.Contains(out, "## PATH") {
+		t.Errorf("expected both headers; got:\n%s", out)
 	}
 }
 

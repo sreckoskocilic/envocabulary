@@ -20,6 +20,7 @@ import (
 	"github.com/sreckoskocilic/envocabulary/internal/inventory"
 	"github.com/sreckoskocilic/envocabulary/internal/lost"
 	"github.com/sreckoskocilic/envocabulary/internal/model"
+	"github.com/sreckoskocilic/envocabulary/internal/pathentry"
 	"github.com/sreckoskocilic/envocabulary/internal/report"
 )
 
@@ -65,6 +66,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 				return runDangling(args[1:], stdout, stderr)
 			case "lost":
 				return runLost(args[1:], stdout, stderr)
+			case "path":
+				return runPath(args[1:], stdout, stderr)
 			case "report":
 				return runReport(args[1:], stdout, stderr)
 			default:
@@ -86,6 +89,9 @@ Live-env (introspects the running shell):
 
   explain [--json] [--values] [--chain] [--shell SHELL] NAME
       Prints full attribution for provided variable.
+
+  path [--json] [--chain] [--shell SHELL] [VARNAME...]
+      Per-entry attribution for colon-separated path variables.
 
 Static-file:
   inventory
@@ -718,5 +724,126 @@ func runExplain(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	explain.EmitText(stdout, result, *showValues, *showChain)
+	return 0
+}
+
+func helpPath(w io.Writer) {
+	fmt.Fprint(w, `envocabulary path — per-entry attribution for colon-separated path variables
+
+Usage:
+  envocabulary path [--json] [--chain] [--shell SHELL] [VARNAME...]
+
+Shows where each entry in PATH, MANPATH, FPATH, etc. was introduced.
+
+Arguments:
+  VARNAME...      specific variables (default: all deferred-list vars in env)
+
+Flags:
+  --json          emit JSON
+  --chain         show source chain
+  --shell SHELL   force tracer (zsh|bash); default auto-detects
+
+Examples:
+  envocabulary path
+  envocabulary path PATH
+  envocabulary path --chain PATH MANPATH
+  envocabulary path --json | jq
+`)
+}
+
+func runPath(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("path", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() { helpPath(stdout) }
+	jsonOut := fs.Bool("json", false, "emit JSON")
+	showChain := fs.Bool("chain", false, "show source chain")
+	shellFlag := fs.String("shell", "", "force tracer (zsh|bash); default auto-detects from $SHELL")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	tracer, err := capture.TracerForShell(*shellFlag)
+	if err != nil {
+		fmt.Fprintln(stderr, "error:", err)
+		return 2
+	}
+
+	current, err := capture.CurrentEnv()
+	if err != nil {
+		return die(stderr, err)
+	}
+
+	trace, err := capture.TracedStartupWith(tracer)
+	if err != nil {
+		fmt.Fprintf(stderr, "warning: trace unavailable: %v\n", err)
+		trace = nil
+	}
+
+	var varNames []string
+	if fs.NArg() > 0 {
+		varNames = fs.Args()
+	} else {
+		for name := range current {
+			if model.IsDeferredListVar(name) && current[name] != "" {
+				varNames = append(varNames, name)
+			}
+		}
+		slices.Sort(varNames)
+	}
+
+	var results []pathentry.VarBreakdown
+	for _, name := range varNames {
+		r := pathentry.Attribute(name, current[name], trace)
+		if len(r.Entries) > 0 {
+			results = append(results, r)
+		}
+	}
+
+	if len(results) == 0 {
+		fmt.Fprintln(stdout, "no path entries found")
+		return 0
+	}
+
+	if *jsonOut {
+		return emitPathJSON(stdout, stderr, results)
+	}
+	emitPathText(stdout, results, *showChain)
+	return 0
+}
+
+func emitPathText(w io.Writer, results []pathentry.VarBreakdown, showChain bool) {
+	for i, r := range results {
+		if i > 0 {
+			fmt.Fprintln(w)
+		}
+		fmt.Fprintf(w, "## %s\n", r.Name)
+
+		maxDir := 0
+		for _, e := range r.Entries {
+			if len(e.Dir) > maxDir {
+				maxDir = len(e.Dir)
+			}
+		}
+
+		for _, e := range r.Entries {
+			source := "inherited"
+			if e.File != "" {
+				source = fmt.Sprintf("%s:%d", e.File, e.Line)
+			}
+			chainInfo := ""
+			if showChain && len(e.Chain) > 0 {
+				chainInfo = fmt.Sprintf("  (via %s)", strings.Join(e.Chain, " → "))
+			}
+			fmt.Fprintf(w, "  %-*s  %s%s\n", maxDir, e.Dir, source, chainInfo)
+		}
+	}
+}
+
+func emitPathJSON(stdout, stderr io.Writer, results []pathentry.VarBreakdown) int {
+	enc := json.NewEncoder(stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(results); err != nil {
+		return die(stderr, err)
+	}
 	return 0
 }
