@@ -1348,6 +1348,50 @@ func TestOverrideFromConfig_SkipsNonExportAssign(t *testing.T) {
 	}
 }
 
+func TestOverrideFromConfig_NoSubstringFalsePositive(t *testing.T) {
+	dead := false
+	results := []pathentry.VarBreakdown{
+		{
+			Name: "PATH",
+			Entries: []pathentry.Entry{
+				{Dir: "/opt/homebrew", File: "/etc/zprofile", Line: 1, Exists: &dead},
+			},
+		},
+	}
+	files := []inventory.File{
+		{
+			Path: "/u/.zshrc",
+			Items: []inventory.Item{
+				{Kind: inventory.KindExport, Name: "PATH", Line: 10, Value: "/opt/homebrew/bin:$PATH"},
+			},
+		},
+	}
+	overrideFromConfig(results, files)
+	if results[0].Entries[0].File != "/etc/zprofile" {
+		t.Errorf("/opt/homebrew should not match /opt/homebrew/bin; got %s:%d", results[0].Entries[0].File, results[0].Entries[0].Line)
+	}
+}
+
+func TestValueContainsDir(t *testing.T) {
+	cases := []struct {
+		value, dir string
+		want       bool
+	}{
+		{"/opt/dead:$PATH", "/opt/dead", true},
+		{"/opt/homebrew/bin:$PATH", "/opt/homebrew", false},
+		{"/usr/bin:/usr/local/bin", "/usr/bin", true},
+		{"/usr/local/bin", "/usr", false},
+		{"/opt/dead", "/opt/dead", true},
+		{"", "/opt/dead", false},
+		{"/opt/dead", "", false},
+	}
+	for _, tc := range cases {
+		if got := valueContainsDir(tc.value, tc.dir); got != tc.want {
+			t.Errorf("valueContainsDir(%q, %q) = %v, want %v", tc.value, tc.dir, got, tc.want)
+		}
+	}
+}
+
 func TestFindPathsDRef_ExactMatch(t *testing.T) {
 	entry := pathentry.Entry{Dir: "/opt/dead", File: "/etc/zprofile", Line: 1}
 	refs := []pathsDEntry{{File: "/etc/paths.d/foo", Line: 2, Dir: "/opt/dead"}}

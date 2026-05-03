@@ -863,11 +863,20 @@ func findConfigRef(entry *pathentry.Entry, dir string, files []inventory.File) b
 	for _, f := range files {
 		for _, item := range f.Items {
 			if (item.Kind == inventory.KindExport || item.Kind == inventory.KindAssign) &&
-				strings.Contains(item.Value, dir) {
+				valueContainsDir(item.Value, dir) {
 				entry.File = f.Path
 				entry.Line = item.Line
 				return true
 			}
+		}
+	}
+	return false
+}
+
+func valueContainsDir(value, dir string) bool {
+	for _, seg := range strings.Split(value, ":") {
+		if seg == dir {
+			return true
 		}
 	}
 	return false
