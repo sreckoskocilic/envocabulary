@@ -12,6 +12,16 @@ import (
 
 const launchctlTimeout = 3 * time.Second
 
+var launchctlGetenv = func(name string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), launchctlTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "launchctl", "getenv", name).Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(string(out), "\n"), nil
+}
+
 var terminalVars = map[string]bool{
 	"TERM":                    true,
 	"TERM_PROGRAM":            true,
@@ -102,12 +112,8 @@ func Classify(name, value string) (origin model.Origin, source string) {
 		return model.OriginSystem, "shell-managed"
 	}
 	if runtime.GOOS == "darwin" {
-		ctx, cancel := context.WithTimeout(context.Background(), launchctlTimeout)
-		defer cancel()
-		if out, err := exec.CommandContext(ctx, "launchctl", "getenv", name).Output(); err == nil {
-			if strings.TrimRight(string(out), "\n") == value {
-				return model.OriginLaunchd, "launchctl setenv"
-			}
+		if out, err := launchctlGetenv(name); err == nil && out == value {
+			return model.OriginLaunchd, "launchctl setenv"
 		}
 	}
 	return model.OriginUnknown, ""

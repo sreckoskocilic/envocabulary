@@ -2,6 +2,7 @@ package capture
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/sreckoskocilic/envocabulary/internal/model"
@@ -169,5 +170,32 @@ func TestParseTrace(t *testing.T) {
 				t.Errorf("got %+v\nwant %+v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestBoundedWriter(t *testing.T) {
+	w := &boundedWriter{max: 10}
+	n, err := w.Write([]byte("hello"))
+	if err != nil || n != 5 {
+		t.Fatalf("first write: n=%d err=%v", n, err)
+	}
+	n, err = w.Write([]byte("world"))
+	if err != nil || n != 5 {
+		t.Fatalf("second write: n=%d err=%v", n, err)
+	}
+	if w.String() != "helloworld" {
+		t.Errorf("got %q", w.String())
+	}
+}
+
+func TestBoundedWriter_Overflow(t *testing.T) {
+	w := &boundedWriter{max: 10}
+	w.Write([]byte("12345"))
+	_, err := w.Write([]byte("678901"))
+	if err == nil {
+		t.Fatal("expected error on overflow")
+	}
+	if !strings.Contains(err.Error(), "100 MB") {
+		t.Errorf("expected trace-too-large error; got %v", err)
 	}
 }

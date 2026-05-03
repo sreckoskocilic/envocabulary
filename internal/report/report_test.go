@@ -97,7 +97,9 @@ func TestBuildFunctionDef(t *testing.T) {
 func TestWriteText(t *testing.T) {
 	r := Build(testFiles())
 	var buf bytes.Buffer
-	WriteText(&buf, r)
+	if err := WriteText(&buf, r); err != nil {
+		t.Fatalf("WriteText: %v", err)
+	}
 	out := buf.String()
 
 	for _, want := range []string{"SAFE TO DELETE", "REVIEW", "DANGLING", "ORPHANED FILES"} {
@@ -186,7 +188,9 @@ func TestBuildDanglingExportNoValue(t *testing.T) {
 func TestWriteTextEmptySections(t *testing.T) {
 	r := Report{}
 	var buf bytes.Buffer
-	WriteText(&buf, r)
+	if err := WriteText(&buf, r); err != nil {
+		t.Fatalf("WriteText: %v", err)
+	}
 	out := buf.String()
 	if !strings.Contains(out, "(none)") {
 		t.Error("expected (none) for empty sections")

@@ -3,6 +3,7 @@ package capture
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,7 +16,26 @@ import (
 	"github.com/sreckoskocilic/envocabulary/internal/model"
 )
 
-const traceTimeout = 30 * time.Second
+const (
+	traceTimeout  = 30 * time.Second
+	maxTraceBytes = 100 * 1024 * 1024 // 100 MB
+)
+
+var errTraceTooLarge = errors.New("trace output exceeded 100 MB; shell startup may contain a loop")
+
+type boundedWriter struct {
+	buf bytes.Buffer
+	max int
+}
+
+func (w *boundedWriter) Write(p []byte) (int, error) {
+	if w.buf.Len()+len(p) > w.max {
+		return 0, errTraceTooLarge
+	}
+	return w.buf.Write(p)
+}
+
+func (w *boundedWriter) String() string { return w.buf.String() }
 
 var CurrentEnv = currentEnv
 
@@ -36,8 +56,8 @@ func (ZshTracer) RawTrace() (string, error) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "zsh", "-l", "-i", "-x", "-c", "exit")
 	cmd.Env = envWithPS4("+%x:%i> ")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	stderr := &boundedWriter{max: maxTraceBytes}
+	cmd.Stderr = stderr
 	err := cmd.Run()
 	out := stderr.String()
 	if err != nil && out == "" {
@@ -53,8 +73,8 @@ func (BashTracer) RawTrace() (string, error) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "bash", "-l", "-i", "-x", "-c", "exit")
 	cmd.Env = envWithPS4(`+${BASH_SOURCE}:${LINENO}> `)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	stderr := &boundedWriter{max: maxTraceBytes}
+	cmd.Stderr = stderr
 	err := cmd.Run()
 	out := stderr.String()
 	if err != nil && out == "" {

@@ -763,6 +763,9 @@ func TestRunScan_JSONEncodeError(t *testing.T) {
 	if code != 1 {
 		t.Errorf("expected 1 for encode error, got %d", code)
 	}
+	if !strings.Contains(stderr.String(), "error:") {
+		t.Errorf("expected error on stderr; got %q", stderr.String())
+	}
 }
 
 func TestRunReport_CreateFileError(t *testing.T) {
@@ -1166,6 +1169,9 @@ func TestRunPath_JSONEncodeError(t *testing.T) {
 	if code != 1 {
 		t.Errorf("expected 1 for encode error, got %d", code)
 	}
+	if !strings.Contains(stderr.String(), "error:") {
+		t.Errorf("expected error on stderr; got %q", stderr.String())
+	}
 }
 
 func TestEmitPathText(t *testing.T) {
@@ -1380,10 +1386,10 @@ func TestOverrideFromConfig_FallsBackToPathsD(t *testing.T) {
 		},
 	}
 	orig := scanPathsD
+	t.Cleanup(func() { scanPathsD = orig })
 	scanPathsD = func() []pathsDEntry {
 		return []pathsDEntry{{File: "/etc/paths.d/sys", Line: 1, Dir: "/opt/system"}}
 	}
-	t.Cleanup(func() { scanPathsD = orig })
 	overrideFromConfig(results, nil)
 	if results[0].Entries[0].File != "/etc/paths.d/sys" {
 		t.Errorf("expected paths.d fallback; got %s", results[0].Entries[0].File)
@@ -1394,6 +1400,7 @@ func TestRunPath_CheckUsesConfigOverride(t *testing.T) {
 	dead := "/tmp/envocabulary-nonexistent-" + t.Name()
 	stubCurrentEnv(t, map[string]string{"PATH": dead}, nil)
 	orig := inventory.Discover
+	t.Cleanup(func() { inventory.Discover = orig })
 	inventory.Discover = func() ([]inventory.File, error) {
 		return []inventory.File{
 			{
@@ -1404,7 +1411,6 @@ func TestRunPath_CheckUsesConfigOverride(t *testing.T) {
 			},
 		}, nil
 	}
-	t.Cleanup(func() { inventory.Discover = orig })
 	var stdout, stderr bytes.Buffer
 	code := runPath([]string{"--check", "PATH"}, &stdout, &stderr)
 	if code != 1 {
@@ -1453,6 +1459,9 @@ func TestRunExplain_JSONOutput_EncodeError(t *testing.T) {
 	code := runExplain([]string{"--json", "FOO"}, w, &stderr)
 	if code != 1 {
 		t.Errorf("expected 1 for encode error, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "error:") {
+		t.Errorf("expected error on stderr; got %q", stderr.String())
 	}
 }
 

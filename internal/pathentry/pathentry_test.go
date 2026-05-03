@@ -181,9 +181,20 @@ func TestAttribute_ChainNotShared(t *testing.T) {
 		{Name: "PATH", File: "/u/helpers.sh", Line: 5, Raw: "export PATH=/usr/bin", Chain: chain},
 	}
 	r := Attribute("PATH", "/usr/bin", trace)
+
 	r.Entries[0].Chain[0] = "mutated"
 	if chain[0] != "/u/.zshrc" {
-		t.Errorf("Attribute must not share chain slices with caller")
+		t.Errorf("mutating output chain must not affect caller input")
+	}
+
+	chain2 := []string{"/u/.zshrc"}
+	trace2 := []model.TraceEntry{
+		{Name: "PATH", File: "/u/helpers.sh", Line: 5, Raw: "export PATH=/usr/bin", Chain: chain2},
+	}
+	r2 := Attribute("PATH", "/usr/bin", trace2)
+	chain2[0] = "mutated"
+	if r2.Entries[0].Chain[0] != "/u/.zshrc" {
+		t.Errorf("mutating input chain after call must not affect output")
 	}
 }
 

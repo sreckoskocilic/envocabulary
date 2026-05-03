@@ -1,6 +1,8 @@
 package buckets
 
 import (
+	"errors"
+	"runtime"
 	"testing"
 
 	"github.com/sreckoskocilic/envocabulary/internal/model"
@@ -36,6 +38,7 @@ func TestClassify(t *testing.T) {
 		{"ZSH_VERSION", "ZSH_VERSION", "5.9", model.OriginSystem, "shell-managed"},
 		{"BASH", "BASH", "/bin/bash", model.OriginSystem, "shell-managed"},
 		{"unknown random", "ZZ_NOT_A_REAL_VAR_FOR_TESTS", "x", model.OriginUnknown, ""},
+		{"COMMAND_MODE", "COMMAND_MODE", "unix2003", model.OriginSystem, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -47,5 +50,59 @@ func TestClassify(t *testing.T) {
 				t.Errorf("source: got %q, want %q", gotSource, tc.wantSource)
 			}
 		})
+	}
+}
+
+func TestClassify_LaunchdMatch(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("launchctl only on macOS")
+	}
+	orig := launchctlGetenv
+	t.Cleanup(func() { launchctlGetenv = orig })
+	launchctlGetenv = func(name string) (string, error) {
+		if name == "MY_LAUNCHD_VAR" {
+			return "expected-value", nil
+		}
+		return "", errors.New("not found")
+	}
+
+	origin, source := Classify("MY_LAUNCHD_VAR", "expected-value")
+	if origin != model.OriginLaunchd {
+		t.Errorf("origin: got %q, want %q", origin, model.OriginLaunchd)
+	}
+	if source != "launchctl setenv" {
+		t.Errorf("source: got %q, want %q", source, "launchctl setenv")
+	}
+}
+
+func TestClassify_LaunchdMismatch(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("launchctl only on macOS")
+	}
+	orig := launchctlGetenv
+	t.Cleanup(func() { launchctlGetenv = orig })
+	launchctlGetenv = func(name string) (string, error) {
+		return "different-value", nil
+	}
+
+	origin, _ := Classify("MY_LAUNCHD_VAR", "expected-value")
+	if origin != model.OriginUnknown {
+		t.Errorf("origin: got %q, want %q", origin, model.OriginUnknown)
+	}
+}
+
+func TestClassify_LaunchdError(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("launchctl only on macOS")
+	}
+	orig := launchctlGetenv
+	t.Cleanup(func() { launchctlGetenv = orig })
+	launchctlGetenv = func(name string) (string, error) {
+		return "", errors.New("timeout")
+	}
+
+	origin, _ := Classify("MY_LAUNCHD_VAR", "val")
+	if origin != model.OriginUnknown {
+		t.Errorf("origin: got %q, want %q", origin, model.OriginUnknown)
 	}
 }

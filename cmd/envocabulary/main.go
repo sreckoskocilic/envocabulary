@@ -634,7 +634,9 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, name)
 		return 0
 	}
-	report.WriteText(stdout, r)
+	if err := report.WriteText(stdout, r); err != nil {
+		return die(stderr, err)
+	}
 	return 0
 }
 

@@ -98,7 +98,7 @@ func TestFind_MixedKindsSortCorrectly(t *testing.T) {
 	}
 	groups := Find(files)
 	if len(groups) != 2 {
-		t.Fatalf("expected 2 groups, got %d", len(groups))
+		t.Fatalf("expected 2 groups, got %d; cannot check ordering", len(groups))
 	}
 	if groups[0].Kind != inventory.KindAlias || groups[1].Kind != inventory.KindExport {
 		t.Errorf("expected alias before export; got %s, %s", groups[0].Kind, groups[1].Kind)

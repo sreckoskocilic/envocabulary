@@ -53,6 +53,17 @@ checksum:
   name_template: '{{ .ProjectName }}_{{ .Version }}_checksums.txt'
   algorithm: sha256
 
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    output: true
+    args:
+      - "sign-blob"
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "--yes"
+      - "${artifact}"
+
 nfpms:
   - id: linux-packages
     package_name: envocabulary

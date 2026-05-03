@@ -105,7 +105,9 @@ VER_NO_V=${VERSION#v}
 # --- download & install --------------------------------------------------------
 
 ARCHIVE="${BIN_NAME}_${VER_NO_V}_${OS}_${ARCH}.tar.gz"
-URL="https://github.com/$REPO/releases/download/$VERSION/$ARCHIVE"
+CHECKSUMS="${BIN_NAME}_${VER_NO_V}_checksums.txt"
+BASE_URL="https://github.com/$REPO/releases/download/$VERSION"
+URL="$BASE_URL/$ARCHIVE"
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -114,6 +116,58 @@ echo "Downloading $URL"
 if ! curl -fsSL "$URL" -o "$TMP/$ARCHIVE"; then
     echo "download failed; check that release $VERSION exists for $OS/$ARCH" >&2
     exit 1
+fi
+
+echo "Verifying checksum..."
+if ! curl -fsSL "$BASE_URL/$CHECKSUMS" -o "$TMP/$CHECKSUMS"; then
+    echo "checksum file download failed; cannot verify integrity" >&2
+    exit 1
+fi
+
+EXPECTED=$(grep "$ARCHIVE" "$TMP/$CHECKSUMS" | awk '{print $1}')
+if [ -z "$EXPECTED" ]; then
+    echo "no checksum found for $ARCHIVE in $CHECKSUMS" >&2
+    exit 1
+fi
+
+if command -v sha256sum >/dev/null 2>&1; then
+    ACTUAL=$(sha256sum "$TMP/$ARCHIVE" | awk '{print $1}')
+elif command -v shasum >/dev/null 2>&1; then
+    ACTUAL=$(shasum -a 256 "$TMP/$ARCHIVE" | awk '{print $1}')
+else
+    echo "no sha256sum or shasum available; cannot verify checksum" >&2
+    exit 1
+fi
+
+if [ "$ACTUAL" != "$EXPECTED" ]; then
+    echo "checksum mismatch: expected $EXPECTED, got $ACTUAL" >&2
+    exit 1
+fi
+
+# --- optional cosign signature verification -----------------------------------
+
+if command -v cosign >/dev/null 2>&1; then
+    SIG_URL="$BASE_URL/$CHECKSUMS.sig"
+    CERT_URL="$BASE_URL/$CHECKSUMS.pem"
+    if curl -fsSL "$SIG_URL" -o "$TMP/$CHECKSUMS.sig" 2>/dev/null && \
+       curl -fsSL "$CERT_URL" -o "$TMP/$CHECKSUMS.pem" 2>/dev/null; then
+        echo "Verifying cosign signature..."
+        if cosign verify-blob \
+            --certificate "$TMP/$CHECKSUMS.pem" \
+            --signature "$TMP/$CHECKSUMS.sig" \
+            --certificate-identity-regexp "https://github.com/$REPO" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "$TMP/$CHECKSUMS" >/dev/null 2>&1; then
+            echo "✓ Cosign signature verified"
+        else
+            echo "✗ cosign signature verification failed" >&2
+            exit 1
+        fi
+    else
+        echo "  (cosign signature files not found in release; skipping signature check)"
+    fi
+else
+    echo "  (cosign not installed; skipping signature verification)"
 fi
 
 tar -xzf "$TMP/$ARCHIVE" -C "$TMP"
