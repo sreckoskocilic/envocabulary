@@ -38,7 +38,7 @@ Live env (introspects your running shell):
 
 - `scan` *(default)* — prints all variables in the current env grouped by origin
 - `explain NAME` — prints full attribution for provided variable
-- `path [VARNAME...]` — per-entry attribution for colon-separated path variables
+- `path [VARNAME...]` — per-entry attribution for colon-separated path variables; `--check` finds dead entries
 
 Static files:
 
@@ -77,6 +77,16 @@ Static files:
       ~/.cargo/bin            ~/.zshrc:22
 
 Entries not matched to any shell startup assignment are shown as `inherited`.
+
+`--check` filters to entries whose directory no longer exists and traces them back to the config file to edit:
+
+    $ envocabulary path --check PATH
+    ## PATH
+      /opt/homebrew/Cellar/go/1.25.1/libexec/bin  ~/.zshrc:17  (does not exist)
+      /opt/pkg/env/active/bin                      /etc/paths.d/10-pmk-global:1  (does not exist)
+      /Applications/VMware                         /etc/paths.d/com.vmware.fusion.public:1  (does not exist)
+
+Exits 1 when dead entries are found (useful in scripts).
 
 ## Limits
 
