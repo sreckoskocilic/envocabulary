@@ -128,7 +128,8 @@ func Clean(r io.Reader) (string, Stats, error) {
 
 func shouldKeepBlock(block []lineInfo) bool {
 	if len(block) == 1 {
-		return !isCommentedCode(block[0].inner)
+		s := strings.TrimSpace(block[0].inner)
+		return !isCommentedCode(s) && !isDecoration(s)
 	}
 	sawLabel := false
 	for _, li := range block {

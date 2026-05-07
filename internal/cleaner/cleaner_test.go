@@ -60,6 +60,21 @@ func TestClean(t *testing.T) {
 			"# this comment is not a header but is a single line standalone\nexport FOO=1\n",
 		},
 		{
+			"single-line decoration stripped",
+			"# ===\nexport FOO=1\n",
+			"export FOO=1\n",
+		},
+		{
+			"two-line decoration stripped",
+			"# ===\n# ===\nexport FOO=1\n",
+			"export FOO=1\n",
+		},
+		{
+			"single-line dashes stripped",
+			"# ---\nexport FOO=1\n",
+			"export FOO=1\n",
+		},
+		{
 			"commented plugins array stripped",
 			"# plugins=(git docker rails)\nplugins=(git)\n",
 			"plugins=(git)\n",

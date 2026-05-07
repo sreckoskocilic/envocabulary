@@ -75,15 +75,33 @@ func Attribute(varName, currentValue string, trace []model.TraceEntry) VarBreakd
 
 func extractValue(raw, name string) string {
 	target := name + "="
-	idx := strings.Index(raw, target)
-	if idx < 0 {
-		return ""
+	search := raw
+	offset := 0
+	for {
+		idx := strings.Index(search, target)
+		if idx < 0 {
+			return ""
+		}
+		abs := offset + idx
+		if abs > 0 && isWordChar(raw[abs-1]) {
+			search = search[idx+len(target):]
+			offset = abs + len(target)
+			continue
+		}
+		val := raw[abs+len(target):]
+		if val != "" && (val[0] == '"' || val[0] == '\'') {
+			if end := strings.IndexByte(val[1:], val[0]); end >= 0 {
+				val = val[1 : 1+end]
+			} else {
+				val = val[1:]
+			}
+		}
+		return val
 	}
-	val := raw[idx+len(target):]
-	if len(val) >= 2 && ((val[0] == '"' && val[len(val)-1] == '"') || (val[0] == '\'' && val[len(val)-1] == '\'')) {
-		val = val[1 : len(val)-1]
-	}
-	return val
+}
+
+func isWordChar(c byte) bool {
+	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'
 }
 
 func splitPath(s string) []string {

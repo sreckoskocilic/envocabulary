@@ -177,7 +177,7 @@ func parseTrace(s string) []model.TraceEntry {
 		ln, _ := strconv.Atoi(lineStr)
 
 		if file != currentFile {
-			if prevWasSource {
+			if prevWasSource && !strings.HasPrefix(file, "(") {
 				stack = append(stack, file)
 			} else if idx := fileIndex(stack, file); idx >= 0 {
 				stack = stack[:idx+1]

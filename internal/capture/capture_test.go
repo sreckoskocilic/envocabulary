@@ -162,6 +162,20 @@ func TestParseTrace(t *testing.T) {
 				{File: "/u/.zshrc", Line: 2, Name: "Y", Raw: "export Y=2"},
 			},
 		},
+		{
+			"pseudo-file after source not pushed to chain",
+			"+/u/.zshrc:1> source utils.sh\n++(anon):1> export A=1\n",
+			[]model.TraceEntry{
+				{File: "(anon)", Line: 1, Name: "A", Raw: "export A=1"},
+			},
+		},
+		{
+			"pseudo-file zsh after source not pushed to chain",
+			"+/u/.zshrc:1> source utils.sh\n++(zsh):5> export B=2\n",
+			[]model.TraceEntry{
+				{File: "(zsh)", Line: 5, Name: "B", Raw: "export B=2"},
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

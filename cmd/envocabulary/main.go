@@ -107,7 +107,7 @@ Static-file:
       Lists config file entries that no longer reference a valid target.
 
   lost [--bash]
-      Lists orphaned files (not sourced by any canonical config).
+      Lists definitions unique to orphan/backup config files.
 
   clean FILE
       Prints safe-to-remove lines of provided file.
@@ -362,12 +362,12 @@ func emitDanglingText(w io.Writer, findings []dangling.Finding) {
 }
 
 func helpLost(w io.Writer) {
-	fmt.Fprint(w, `envocabulary lost — lists orphaned files (not sourced by any canonical config)
+	fmt.Fprint(w, `envocabulary lost — lists definitions unique to orphan/backup config files
 
 Usage:
   envocabulary lost [--bash]
 
-Scans for orphaned files (not sourced by any canonical config).
+Scans orphan/backup config files for definitions not present in any canonical config.
 
 Flags:
   --bash  include bash config files

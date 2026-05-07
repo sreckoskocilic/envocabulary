@@ -17,10 +17,13 @@ A `grep -r JAVA_HOME ~` will show every file that mentions the variable, but it'
 
     $ envocabulary explain --chain JAVA_HOME
     JAVA_HOME
-        origin:  shell-file
-        winner:  ~/helpers.sh:3
-        chain:   ~/.zshrc → ~/helpers.sh
-        also written at:  ~/.zshenv:8
+      origin   shell-file
+      primary  ~/helpers.sh:3
+      chain    ~/.zshrc → ~/helpers.sh
+      writers
+        ~/.zshenv:8
+        ~/helpers.sh:3  (winner)
+      value    [hidden, use --values]
 
 ## Install
 
@@ -46,9 +49,9 @@ Static files:
 - `catalog` — prints entire shell configuration by merging all its config files
 - `dedup` — cross-file duplicate report for exports, assigns, aliases, functions
 - `dangling` — lists config file entries that no longer reference a valid target
-- `lost` — lists orphaned files (not sourced by any canonical config)
-- `report` — combined audit: safe-to-delete, dedup, dangling, lost results
-- `clean FILE` — prints safe-to-remove lines of provided file
+- `lost` — lists definitions unique to orphan/backup config files
+- `report` — combined audit: safe-to-delete, review (value-changed dups), dangling, orphaned files
+- `clean [--full] FILE` — lists lines to be stripped; with `--full`, prints complete cleaned content
 
 `envocabulary <cmd> -h` for flags.
 

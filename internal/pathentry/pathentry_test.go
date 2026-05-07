@@ -23,6 +23,12 @@ func TestExtractValue(t *testing.T) {
 		{"empty value", "export PATH=", "PATH", ""},
 		{"not found", "export FOO=bar", "PATH", ""},
 		{"value with equals", "export PATH=/a=b:/c", "PATH", "/a=b:/c"},
+		{"substring reject", "export CLASSPATH=/opt/java/lib", "PATH", ""},
+		{"substring reject GOPATH", "GOPATH=/go/path", "PATH", ""},
+		{"quoted with trailing comment", `export PATH="/usr/bin:/usr/local/bin" # setup`, "PATH", "/usr/bin:/usr/local/bin"},
+		{"single quoted with trailing", `export PATH='/usr/bin' # comment`, "PATH", "/usr/bin"},
+		{"unclosed quote", `export PATH="/usr/bin`, "PATH", "/usr/bin"},
+		{"word boundary after space", `export CLASSPATH=/java PATH=/usr/bin`, "PATH", "/usr/bin"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
