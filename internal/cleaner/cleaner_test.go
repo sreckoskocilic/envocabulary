@@ -118,13 +118,15 @@ func TestClean_PreservesNoTrailingNewline(t *testing.T) {
 
 func TestLooksLikeLabel(t *testing.T) {
 	cases := map[string]bool{
-		"aliases":                       true,
-		"env vars":                      true,
-		"five word label here ok":       true,  // 5 fields
-		"this is six fields total here": false, // >5 fields
-		"sentence ending in period.":    false,
-		strings.Repeat("x", 51):         false, // too long
-		"":                              true,  // 0 fields, treated as label
+		"aliases":                 true,
+		"env vars":                true,
+		"five word label here ok": true, // 5 fields
+		"this section configures development environment":            true,  // 6 fields, <=8
+		"section header for the development environment config area": true,  // 8 fields
+		"this has nine words which is too many for a label":          false, // 9 fields, >8
+		"sentence ending in period.":                                 false,
+		strings.Repeat("x", 81):                                      false, // too long
+		"":                                                           true,  // 0 fields, treated as label
 	}
 	for in, want := range cases {
 		if got := looksLikeLabel(in); got != want {

@@ -17,7 +17,7 @@ test:  ## Run tests
 	$(GO) test -race $(PKGS)
 
 test-linux:  ## Run tests inside a Linux Docker container (requires Docker)
-	docker run --rm -v "$$PWD":/src -w /src golang:1.24 \
+	docker run --rm -v "$$PWD":/src -w /src golang:1.26 \
 		sh -c 'apt-get update -qq && apt-get install -y -qq zsh >/dev/null 2>&1 && go test -race ./...'
 
 cover:  ## Run tests with coverage

@@ -849,12 +849,13 @@ func runPath(args []string, stdout, stderr io.Writer) int {
 
 func overrideFromConfig(results []pathentry.VarBreakdown, files []inventory.File) {
 	pathsFiles := scanPathsD()
-	for i, r := range results {
-		for j, e := range r.Entries {
-			if findConfigRef(&results[i].Entries[j], e.Dir, files) {
+	for i := range results {
+		for j := range results[i].Entries {
+			e := &results[i].Entries[j] //nolint:gosec // index-based, no aliasing
+			if findConfigRef(e, e.Dir, files) {
 				continue
 			}
-			findPathsDRef(&results[i].Entries[j], e.Dir, pathsFiles)
+			findPathsDRef(e, e.Dir, pathsFiles)
 		}
 	}
 }

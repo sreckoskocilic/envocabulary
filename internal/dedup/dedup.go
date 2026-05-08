@@ -91,8 +91,9 @@ func Find(files []inventory.File) []Group {
 func LoserSet(groups []Group) map[string]Occurrence {
 	out := map[string]Occurrence{}
 	for i := range groups {
-		for j := range groups[i].Losers {
-			out[Key(groups[i].Losers[j].File, groups[i].Losers[j].Line)] = groups[i].Winner
+		g := groups[i]
+		for _, l := range g.Losers {
+			out[Key(l.File, l.Line)] = g.Winner
 		}
 	}
 	return out

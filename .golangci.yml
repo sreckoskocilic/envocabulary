@@ -1,115 +1,117 @@
+version: "2"
 run:
-  timeout: 5m
   tests: true
-
 linters:
-  disable-all: true
+  default: none
   enable:
-    # correctness / bugs
-    - errcheck
-    - govet
-    - staticcheck
-    - unused
-    - ineffassign
-    - errorlint
-    - exhaustive
-    - nilerr
     - bodyclose
     - copyloopvar
+    - errcheck
+    - errorlint
+    - exhaustive
+    - gocognit
+    - gocritic
+    - gocyclo
+    - godot
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
+    - nilerr
+    - prealloc
     - predeclared
+    - revive
+    - staticcheck
+    - thelper
     - unconvert
     - unparam
-
-    # security
-    - gosec
-
-    # style / formatting
-    - gofumpt
-    - goimports
+    - unused
     - whitespace
-    - godot
-    - misspell
-    - revive
-    - gocritic
-
-    # complexity / quality
-    - gocyclo
-    - gocognit
-    - prealloc
-    - nakedret
-
-    # tests
-    - thelper
-
-linters-settings:
-  gocyclo:
-    min-complexity: 15
-  gocognit:
-    min-complexity: 25
-  nakedret:
-    max-func-lines: 10
-
-  errcheck:
-    check-type-assertions: true
-    check-blank: false
-
-  exhaustive:
-    default-signifies-exhaustive: true
-
-  godot:
-    scope: declarations
-    capital: false
-
-  misspell:
-    locale: US
-
-  revive:
-    severity: warning
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+    exhaustive:
+      default-signifies-exhaustive: true
+    gocognit:
+      min-complexity: 25
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+        - hugeParam
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+    gocyclo:
+      min-complexity: 15
+    godot:
+      scope: declarations
+      capital: false
+    misspell:
+      locale: US
+    nakedret:
+      max-func-lines: 10
+    revive:
+      severity: warning
+      rules:
+        - name: var-naming
+        - name: error-return
+        - name: error-naming
+        - name: error-strings
+        - name: errorf
+        - name: indent-error-flow
+        - name: blank-imports
+        - name: context-as-argument
+        - name: dot-imports
+        - name: increment-decrement
+        - name: range
+        - name: receiver-naming
+        - name: unexported-return
+        - name: var-declaration
+        - name: unreachable-code
+        - name: redefines-builtin-id
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
     rules:
-      - name: var-naming
-      - name: error-return
-      - name: error-naming
-      - name: error-strings
-      - name: errorf
-      - name: indent-error-flow
-      - name: blank-imports
-      - name: context-as-argument
-      - name: dot-imports
-      - name: increment-decrement
-      - name: range
-      - name: receiver-naming
-      - name: unexported-return
-      - name: var-declaration
-      - name: unreachable-code
-      - name: redefines-builtin-id
-
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - performance
-      - style
-    disabled-checks:
-      - ifElseChain   # we have legitimate switch-as-if patterns
-      - hugeParam     # not worth optimizing for a CLI
-
-  gofumpt:
-    extra-rules: true
-
+      - linters:
+          - errcheck
+          - gocognit
+          - gocyclo
+          - gosec
+        path: _test\.go
+      - linters:
+          - funlen
+          - gocognit
+          - gocyclo
+        path: cmd/envocabulary/main\.go
+    paths:
+      - dist
+      - vendor
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  exclude-dirs:
-    - dist
-    - vendor
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - gocyclo
-        - gocognit
-        - errcheck
-        - gosec
-    - path: cmd/envocabulary/main\.go
-      linters:
-        - gocyclo    # help-text functions inflate complexity but are flat
-        - gocognit
-        - funlen
   max-issues-per-linter: 0
   max-same-issues: 0
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      extra-rules: true
+  exclusions:
+    generated: lax
+    paths:
+      - dist
+      - vendor
+      - third_party$
+      - builtin$
+      - examples$

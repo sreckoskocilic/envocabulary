@@ -157,13 +157,13 @@ func isDecoration(s string) bool {
 }
 
 func looksLikeLabel(s string) bool {
-	if len(s) > 50 {
+	if len(s) > 80 {
 		return false
 	}
 	if strings.HasSuffix(s, ".") {
 		return false
 	}
-	return len(strings.Fields(s)) <= 5
+	return len(strings.Fields(s)) <= 8
 }
 
 func isCommentedCode(s string) bool {

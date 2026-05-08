@@ -53,7 +53,7 @@ func checkSource(filePath string, it inventory.Item) (Finding, bool) {
 	if strings.ContainsAny(it.Name, "$`") {
 		return Finding{}, false
 	}
-	if !(strings.HasPrefix(it.Name, "/") || strings.HasPrefix(it.Name, "~")) {
+	if it.Name == "" || (it.Name[0] != '/' && it.Name[0] != '~') {
 		return Finding{}, false
 	}
 	target := expand(it.Name)
@@ -92,7 +92,7 @@ func looksLikeLiteralPath(v string) bool {
 	if v == "" {
 		return false
 	}
-	if !(strings.HasPrefix(v, "/") || strings.HasPrefix(v, "~")) {
+	if v[0] != '/' && v[0] != '~' {
 		return false
 	}
 	if strings.ContainsAny(v, "$:") {

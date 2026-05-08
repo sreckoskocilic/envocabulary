@@ -125,17 +125,10 @@ func hasOrphanPrefix(name string) bool {
 }
 
 func isCanonical(name string) bool {
-	for _, n := range canonicalZshNames {
-		if name == n {
-			return true
-		}
+	if slices.Contains(canonicalZshNames, name) {
+		return true
 	}
-	for _, n := range canonicalBashNames {
-		if name == n {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(canonicalBashNames, name)
 }
 
 func parseFile(path string, role Role) File {

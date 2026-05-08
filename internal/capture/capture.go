@@ -142,15 +142,15 @@ func envWithPS4(ps4 string) []string {
 
 func parseNullSeparated(b []byte) map[string]string {
 	m := make(map[string]string)
-	for _, entry := range bytes.Split(b, []byte{0}) {
+	for entry := range bytes.SplitSeq(b, []byte{0}) {
 		if len(entry) == 0 {
 			continue
 		}
-		i := bytes.IndexByte(entry, '=')
-		if i < 0 {
+		before, after, ok := bytes.Cut(entry, []byte{'='})
+		if !ok {
 			continue
 		}
-		m[string(entry[:i])] = string(entry[i+1:])
+		m[string(before)] = string(after)
 	}
 	return m
 }
