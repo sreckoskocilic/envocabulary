@@ -1372,6 +1372,60 @@ func TestOverrideFromConfig_NoSubstringFalsePositive(t *testing.T) {
 	}
 }
 
+func TestOverrideFromConfig_IgnoresCrossVarMatch(t *testing.T) {
+	dead := false
+	results := []pathentry.VarBreakdown{
+		{
+			Name: "PATH",
+			Entries: []pathentry.Entry{
+				{Dir: "/usr/local/go", File: "/etc/zprofile", Line: 1, Exists: &dead},
+			},
+		},
+	}
+	files := []inventory.File{
+		{
+			Path: "/u/.zshrc",
+			Items: []inventory.Item{
+				{Kind: inventory.KindExport, Name: "GOPATH", Line: 5, Value: "/usr/local/go"},
+			},
+		},
+	}
+	overrideFromConfig(results, files)
+	if results[0].Entries[0].File != "/etc/zprofile" {
+		t.Errorf("should not match GOPATH export for PATH entry; got %s:%d", results[0].Entries[0].File, results[0].Entries[0].Line)
+	}
+}
+
+func TestOverrideFromConfig_LastWriterWins(t *testing.T) {
+	dead := false
+	results := []pathentry.VarBreakdown{
+		{
+			Name: "PATH",
+			Entries: []pathentry.Entry{
+				{Dir: "/opt/bin", File: "/etc/zprofile", Line: 1, Exists: &dead},
+			},
+		},
+	}
+	files := []inventory.File{
+		{
+			Path: "/u/.zshenv",
+			Items: []inventory.Item{
+				{Kind: inventory.KindExport, Name: "PATH", Line: 3, Value: "/opt/bin:$PATH"},
+			},
+		},
+		{
+			Path: "/u/.zshrc",
+			Items: []inventory.Item{
+				{Kind: inventory.KindExport, Name: "PATH", Line: 7, Value: "/opt/bin:/usr/bin"},
+			},
+		},
+	}
+	overrideFromConfig(results, files)
+	if results[0].Entries[0].File != "/u/.zshrc" || results[0].Entries[0].Line != 7 {
+		t.Errorf("should attribute to last writer; got %s:%d, want /u/.zshrc:7", results[0].Entries[0].File, results[0].Entries[0].Line)
+	}
+}
+
 func TestValueContainsDir(t *testing.T) {
 	cases := []struct {
 		value, dir string

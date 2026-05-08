@@ -53,7 +53,7 @@ release-snapshot:  ## Build a local snapshot release with goreleaser (requires g
 	goreleaser release --snapshot --clean --skip=publish
 
 install-tools:  ## Install dev tooling (golangci-lint, gofumpt, goreleaser)
-	$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 	$(GO) install mvdan.cc/gofumpt@latest
 	$(GO) install github.com/goreleaser/goreleaser/v2@latest
 

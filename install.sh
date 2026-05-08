@@ -28,8 +28,10 @@ EOF
 while [ $# -gt 0 ]; do
     case "$1" in
         --version)
+            [ $# -ge 2 ] || { echo "error: --version requires a value" >&2; exit 2; }
             VERSION="$2"; shift 2 ;;
         --bin-dir)
+            [ $# -ge 2 ] || { echo "error: --bin-dir requires a value" >&2; exit 2; }
             BIN_DIR="$2"; shift 2 ;;
         -h|--help)
             usage; exit 0 ;;

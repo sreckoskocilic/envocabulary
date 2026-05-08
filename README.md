@@ -45,7 +45,7 @@ Live env (introspects your running shell):
 
 Static files:
 
-- `inventory` — lists all shell config files and assigned types variables count
+- `inventory` — lists all shell config files and counts definitions by type
 - `catalog` — prints entire shell configuration by merging all its config files
 - `dedup` — cross-file duplicate report for exports, assigns, aliases, functions
 - `dangling` — lists config file entries that no longer reference a valid target

@@ -95,7 +95,7 @@ Live-env (introspects the running shell):
 
 Static-file:
   inventory
-      Lists all shell config files and assigned types variables count.
+      Lists all shell config files and counts definitions by type.
 
   catalog [--orphans] [--bash] [-n] [--dedup]
       Prints entire shell configuration by merging all its config files.
@@ -109,11 +109,11 @@ Static-file:
   lost [--bash]
       Lists definitions unique to orphan/backup config files.
 
-  clean FILE
+  clean [--full] FILE
       Prints safe-to-remove lines of provided file.
 
   report [--html] [--bash]
-      Combined audit: safe-to-delete, dedup, dangling, lost results.
+      Combined audit: safe-to-delete, review, dangling, orphaned files.
 
 Run with no arguments for scan. envocabulary <command> -h for per-command help.
 `)
@@ -164,7 +164,7 @@ Examples:
 }
 
 func helpInventory(w io.Writer) {
-	fmt.Fprint(w, `envocabulary inventory — lists all shell config files and assigned types variables count
+	fmt.Fprint(w, `envocabulary inventory — lists all shell config files and counts definitions by type
 
 Usage:
   envocabulary inventory
@@ -357,7 +357,11 @@ func emitDanglingText(w io.Writer, findings []dangling.Finding) {
 			fmt.Fprintf(w, "## %s\n", f.File)
 			currentFile = f.File
 		}
-		fmt.Fprintf(w, "  %s:%d  %s %s  → %s  (%s)\n", f.File, f.Line, f.Kind, f.Name, f.Value, f.Reason)
+		if f.Kind == inventory.KindSource {
+			fmt.Fprintf(w, "  %s:%d  %s  → %s  (%s)\n", f.File, f.Line, f.Kind, f.Value, f.Reason)
+		} else {
+			fmt.Fprintf(w, "  %s:%d  %s %s  → %s  (%s)\n", f.File, f.Line, f.Kind, f.Name, f.Value, f.Reason)
+		}
 	}
 }
 
@@ -584,7 +588,7 @@ Usage:
   envocabulary report [--html] [--bash]
 
 Generates aligned text tables summary report containing
-safe-to-delete, dedup, dangling, lost results.
+safe-to-delete, review, dangling, orphaned files.
 
 Flags:
   --html   write HTML report to MM_DD_YYYY_HH_MM.html in current directory
@@ -852,7 +856,7 @@ func overrideFromConfig(results []pathentry.VarBreakdown, files []inventory.File
 	for i := range results {
 		for j := range results[i].Entries {
 			e := &results[i].Entries[j] //nolint:gosec // index-based, no aliasing
-			if findConfigRef(e, e.Dir, files) {
+			if findConfigRef(e, results[i].Name, e.Dir, files) {
 				continue
 			}
 			findPathsDRef(e, e.Dir, pathsFiles)
@@ -860,18 +864,20 @@ func overrideFromConfig(results []pathentry.VarBreakdown, files []inventory.File
 	}
 }
 
-func findConfigRef(entry *pathentry.Entry, dir string, files []inventory.File) bool {
+func findConfigRef(entry *pathentry.Entry, varName, dir string, files []inventory.File) bool {
+	found := false
 	for _, f := range files {
 		for _, item := range f.Items {
 			if (item.Kind == inventory.KindExport || item.Kind == inventory.KindAssign) &&
+				item.Name == varName &&
 				valueContainsDir(item.Value, dir) {
 				entry.File = f.Path
 				entry.Line = item.Line
-				return true
+				found = true
 			}
 		}
 	}
-	return false
+	return found
 }
 
 func valueContainsDir(value, dir string) bool {
