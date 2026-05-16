@@ -34,7 +34,6 @@ var (
 type lineInfo struct {
 	raw       string
 	isComment bool
-	isShebang bool
 	inner     string
 }
 
@@ -54,7 +53,6 @@ func Process(r io.Reader) ([]Decision, Stats, error) {
 		t := strings.TrimSpace(ln)
 		info[i].raw = ln
 		if strings.HasPrefix(t, "#!") && i == 0 {
-			info[i].isShebang = true
 			continue
 		}
 		if strings.HasPrefix(t, "#") {

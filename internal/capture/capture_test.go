@@ -176,6 +176,13 @@ func TestParseTrace(t *testing.T) {
 				{File: "(zsh)", Line: 5, Name: "B", Raw: "export B=2"},
 			},
 		},
+		{
+			"circular source chain breaks on re-entry",
+			"+/u/a.sh:1> source b.sh\n+/u/b.sh:1> source a.sh\n+/u/a.sh:2> export X=1\n",
+			[]model.TraceEntry{
+				{File: "/u/a.sh", Line: 2, Name: "X", Raw: "export X=1"},
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
