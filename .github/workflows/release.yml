@@ -32,7 +32,16 @@ jobs:
           version: v2.12.2
 
       - name: Test gate
-        run: go test -race -covermode=atomic ./...
+        run: |
+          go test -race -covermode=atomic -coverprofile=coverage.out ./...
+          cov=$(go tool cover -func=coverage.out | awk '/total:/ {gsub(/%/,"",$3); print $3}')
+          echo "Coverage: ${cov}%"
+          if awk -v c=$cov -v m=95 'BEGIN { exit (c+0 < m+0) ? 1 : 0 }'; then
+            echo "✓ coverage ${cov}% meets minimum 95%"
+          else
+            echo "✗ coverage ${cov}% is below minimum 95%"
+            exit 1
+          fi
 
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2

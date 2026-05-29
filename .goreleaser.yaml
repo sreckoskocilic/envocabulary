@@ -4,7 +4,7 @@ project_name: envocabulary
 
 before:
   hooks:
-    - go mod tidy
+    - go mod download
 
 builds:
   - id: envocabulary

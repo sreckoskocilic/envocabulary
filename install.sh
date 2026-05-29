@@ -66,6 +66,12 @@ uname_arch() {
 OS=$(uname_os)
 ARCH=$(uname_arch)
 
+# goreleaser builds no freebsd/386 or freebsd/arm artifacts
+if [ "$OS" = "freebsd" ] && { [ "$ARCH" = "386" ] || [ "$ARCH" = "armv7" ]; }; then
+    echo "no prebuilt binary for $OS/$ARCH; build from source with: go install" >&2
+    exit 1
+fi
+
 # --- pick destination ----------------------------------------------------------
 
 pick_bin_dir() {
