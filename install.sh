@@ -97,7 +97,14 @@ resolve_version() {
         echo "$VERSION"
         return
     fi
-    # GitHub redirects /releases/latest to /releases/tag/<version>
+    v=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
+        | grep -m1 '"tag_name"' \
+        | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
+    if [ -n "$v" ]; then
+        echo "$v"
+        return
+    fi
+    # fallback: API unreachable or rate-limited (60 req/hr unauth)
     curl -fsSI "https://github.com/$REPO/releases/latest" \
         | awk -F/ '/^location:|^Location:/ {gsub(/[\r\n]/,"",$NF); print $NF}' \
         | tail -n1
