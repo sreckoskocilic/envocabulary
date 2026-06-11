@@ -68,7 +68,7 @@ func TestPrintGroup(t *testing.T) {
 		{Name: "FOO"}, {Name: "BAR"},
 	})
 	out := buf.String()
-	if !strings.Contains(out, "exports") || !strings.Contains(out, "2") || !strings.Contains(out, "FOO") || !strings.Contains(out, "BAR") {
+	if !strings.Contains(out, "exports") || !strings.Contains(out, "2  FOO, BAR") {
 		t.Errorf("expected label/count/names; got %q", out)
 	}
 }
@@ -144,7 +144,7 @@ func TestEmitInventoryText(t *testing.T) {
 	if !strings.Contains(out, "(orphan)") {
 		t.Errorf("expected (orphan) suffix; got:\n%s", out)
 	}
-	if !strings.Contains(out, "PATH") || !strings.Contains(out, "ll") || !strings.Contains(out, "OLD") {
+	if !strings.Contains(out, "1  PATH") || !strings.Contains(out, "1  ll") || !strings.Contains(out, "1  OLD") {
 		t.Errorf("expected item names; got:\n%s", out)
 	}
 }
@@ -411,7 +411,7 @@ func TestRunClean_DryRunDefault(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("got %d", code)
 	}
-	if !strings.Contains(stdout.String(), "- ") {
+	if !strings.Contains(stdout.String(), "# export REMOVED=1") {
 		t.Errorf("expected diff line for stripped item; got:\n%s", stdout.String())
 	}
 	if strings.Contains(stdout.String(), "export KEPT=1") {
@@ -688,7 +688,7 @@ func TestRunLost_FindsLostItems(t *testing.T) {
 	if !strings.Contains(out, "JAVA_HOME") {
 		t.Errorf("expected JAVA_HOME in lost output; got:\n%s", out)
 	}
-	if !strings.Contains(out, "gs") {
+	if !strings.Contains(out, "alias      gs") {
 		t.Errorf("expected gs alias in lost output; got:\n%s", out)
 	}
 	if strings.Contains(out, "EDITOR") {
