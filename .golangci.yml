@@ -86,11 +86,6 @@ linters:
           - gocyclo
           - gosec
         path: _test\.go
-      - linters:
-          - funlen
-          - gocognit
-          - gocyclo
-        path: cmd/envocabulary/main\.go
     paths:
       - dist
       - vendor

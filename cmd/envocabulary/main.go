@@ -34,6 +34,8 @@ var createReportFile = func(name string) (io.WriteCloser, error) {
 	return os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 }
 
+var tracedStartup = capture.TracedStartupWith
+
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
@@ -671,7 +673,7 @@ func runScan(args []string, stdout, stderr io.Writer) int {
 		return die(stderr, err)
 	}
 
-	trace, err := capture.TracedStartupWith(tracer)
+	trace, err := tracedStartup(tracer)
 	if err != nil {
 		fmt.Fprintf(stderr, "warning: trace unavailable, falling back to classification-only: %v\n", err)
 		trace = nil
@@ -715,7 +717,7 @@ func runExplain(args []string, stdout, stderr io.Writer) int {
 		return die(stderr, err)
 	}
 
-	trace, err := capture.TracedStartupWith(tracer)
+	trace, err := tracedStartup(tracer)
 	if err != nil {
 		fmt.Fprintf(stderr, "warning: trace unavailable: %v\n", err)
 		trace = nil
@@ -782,24 +784,51 @@ func runPath(args []string, stdout, stderr io.Writer) int {
 		return die(stderr, err)
 	}
 
-	trace, err := capture.TracedStartupWith(tracer)
+	trace, err := tracedStartup(tracer)
 	if err != nil {
 		fmt.Fprintf(stderr, "warning: trace unavailable: %v\n", err)
 		trace = nil
 	}
 
-	var varNames []string
-	if fs.NArg() > 0 {
-		varNames = fs.Args()
-	} else {
-		for name := range current {
-			if model.IsDeferredListVar(name) && current[name] != "" {
-				varNames = append(varNames, name)
-			}
+	results := collectBreakdowns(resolvePathTargets(fs, current), current, trace)
+
+	if *checkExists {
+		filtered := filterDead(results)
+		if len(filtered) == 0 {
+			fmt.Fprintln(stdout, "no dead path entries found")
+			return 0
 		}
-		slices.Sort(varNames)
+		if files, err := inventory.Discover(); err == nil {
+			overrideFromConfig(filtered, files)
+		}
+		if code := emitPath(stdout, stderr, filtered, *jsonOut, *showChain); code != 0 {
+			return code
+		}
+		return 1
 	}
 
+	if len(results) == 0 {
+		fmt.Fprintln(stdout, "no path entries found")
+		return 0
+	}
+	return emitPath(stdout, stderr, results, *jsonOut, *showChain)
+}
+
+func resolvePathTargets(fs *flag.FlagSet, current map[string]string) []string {
+	if fs.NArg() > 0 {
+		return fs.Args()
+	}
+	var names []string
+	for name := range current {
+		if model.IsDeferredListVar(name) && current[name] != "" {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	return names
+}
+
+func collectBreakdowns(varNames []string, current map[string]string, trace []model.TraceEntry) []pathentry.VarBreakdown {
 	var results []pathentry.VarBreakdown
 	for _, name := range varNames {
 		r := pathentry.Attribute(name, current[name], trace)
@@ -808,46 +837,30 @@ func runPath(args []string, stdout, stderr io.Writer) int {
 			results = append(results, r)
 		}
 	}
+	return results
+}
 
-	if *checkExists {
-		var filtered []pathentry.VarBreakdown
-		for _, r := range results {
-			var dead []pathentry.Entry
-			for _, e := range r.Entries {
-				if e.Exists != nil && !*e.Exists {
-					dead = append(dead, e)
-				}
-			}
-			if len(dead) > 0 {
-				filtered = append(filtered, pathentry.VarBreakdown{Name: r.Name, Entries: dead})
+func filterDead(results []pathentry.VarBreakdown) []pathentry.VarBreakdown {
+	var filtered []pathentry.VarBreakdown
+	for _, r := range results {
+		var dead []pathentry.Entry
+		for _, e := range r.Entries {
+			if e.Exists != nil && !*e.Exists {
+				dead = append(dead, e)
 			}
 		}
-		if len(filtered) == 0 {
-			fmt.Fprintln(stdout, "no dead path entries found")
-			return 0
+		if len(dead) > 0 {
+			filtered = append(filtered, pathentry.VarBreakdown{Name: r.Name, Entries: dead})
 		}
-		if files, err := inventory.Discover(); err == nil {
-			overrideFromConfig(filtered, files)
-		}
-		if *jsonOut {
-			if code := emitPathJSON(stdout, stderr, filtered); code != 0 {
-				return code
-			}
-			return 1
-		}
-		emitPathText(stdout, filtered, *showChain)
-		return 1
 	}
+	return filtered
+}
 
-	if len(results) == 0 {
-		fmt.Fprintln(stdout, "no path entries found")
-		return 0
-	}
-
-	if *jsonOut {
+func emitPath(stdout, stderr io.Writer, results []pathentry.VarBreakdown, jsonOut, showChain bool) int {
+	if jsonOut {
 		return emitPathJSON(stdout, stderr, results)
 	}
-	emitPathText(stdout, results, *showChain)
+	emitPathText(stdout, results, showChain)
 	return 0
 }
 

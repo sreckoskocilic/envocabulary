@@ -994,12 +994,26 @@ func TestRunReport_HTMLCloseError(t *testing.T) {
 	}
 }
 
+func TestMain(m *testing.M) {
+	tracedStartup = func(capture.Tracer) ([]model.TraceEntry, error) { return nil, nil }
+	os.Exit(m.Run())
+}
+
 func stubCurrentEnv(t *testing.T, env map[string]string, err error) {
 	t.Helper()
 	orig := capture.CurrentEnv
 	t.Cleanup(func() { capture.CurrentEnv = orig })
 	capture.CurrentEnv = func() (map[string]string, error) {
 		return env, err
+	}
+}
+
+func stubTrace(t *testing.T, entries []model.TraceEntry, err error) {
+	t.Helper()
+	orig := tracedStartup
+	t.Cleanup(func() { tracedStartup = orig })
+	tracedStartup = func(capture.Tracer) ([]model.TraceEntry, error) {
+		return entries, err
 	}
 }
 
@@ -1055,7 +1069,19 @@ func TestRunScan_JSONOutput(t *testing.T) {
 	}
 	var result []map[string]any
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
-		t.Errorf("invalid JSON: %v", err)
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(result) != 1 {
+		t.Fatalf("expected exactly 1 entry, got %d: %v", len(result), result)
+	}
+	if result[0]["name"] != "FOO" {
+		t.Errorf("expected name=FOO; got %v", result[0])
+	}
+	if o, _ := result[0]["origin"].(string); o == "" {
+		t.Errorf("expected non-empty origin; got %v", result[0])
+	}
+	if _, ok := result[0]["value"]; ok {
+		t.Errorf("value should be omitted without --values; got %v", result[0])
 	}
 }
 
@@ -1145,7 +1171,17 @@ func TestRunPath_JSONOutput(t *testing.T) {
 	}
 	var result []map[string]any
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
-		t.Errorf("invalid JSON: %v\noutput: %s", err, stdout.String())
+		t.Fatalf("invalid JSON: %v\noutput: %s", err, stdout.String())
+	}
+	if len(result) != 1 || result[0]["name"] != "PATH" {
+		t.Fatalf("expected one PATH breakdown; got %v", result)
+	}
+	entries, ok := result[0]["entries"].([]any)
+	if !ok || len(entries) != 1 {
+		t.Fatalf("expected 1 entry; got %v", result[0]["entries"])
+	}
+	if entries[0].(map[string]any)["dir"] != "/usr/bin" {
+		t.Errorf("expected dir=/usr/bin; got %v", entries[0])
 	}
 }
 
@@ -1268,7 +1304,21 @@ func TestRunPath_CheckJSON(t *testing.T) {
 	}
 	var result []map[string]any
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
-		t.Errorf("invalid JSON: %v\noutput: %s", err, stdout.String())
+		t.Fatalf("invalid JSON: %v\noutput: %s", err, stdout.String())
+	}
+	if len(result) != 1 || result[0]["name"] != "PATH" {
+		t.Fatalf("expected one PATH breakdown; got %v", result)
+	}
+	entries, ok := result[0]["entries"].([]any)
+	if !ok || len(entries) != 1 {
+		t.Fatalf("expected 1 dead entry; got %v", result[0]["entries"])
+	}
+	e := entries[0].(map[string]any)
+	if e["dir"] != dead {
+		t.Errorf("expected dead dir %q; got %v", dead, e)
+	}
+	if e["exists"] != false {
+		t.Errorf("expected exists=false on dead entry; got %v", e["exists"])
 	}
 }
 
@@ -1534,19 +1584,27 @@ func TestRunCatalog_DiscoverError(t *testing.T) {
 
 func TestRunScan_TraceWarning(t *testing.T) {
 	stubCurrentEnv(t, map[string]string{"FOO": "bar"}, nil)
+	stubTrace(t, nil, errors.New("trace boom"))
 	var stdout, stderr bytes.Buffer
 	code := runScan([]string{"--shell", "zsh"}, &stdout, &stderr)
 	if code != 0 {
 		t.Errorf("expected 0, got %d", code)
 	}
+	if !strings.Contains(stderr.String(), "trace unavailable") {
+		t.Errorf("expected trace-unavailable warning on stderr; got %q", stderr.String())
+	}
 }
 
 func TestRunExplain_TraceWarning(t *testing.T) {
 	stubCurrentEnv(t, map[string]string{"EDITOR": "vim"}, nil)
+	stubTrace(t, nil, errors.New("trace boom"))
 	var stdout, stderr bytes.Buffer
 	code := runExplain([]string{"EDITOR"}, &stdout, &stderr)
 	if code != 0 {
 		t.Errorf("expected 0, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "trace unavailable") {
+		t.Errorf("expected trace-unavailable warning on stderr; got %q", stderr.String())
 	}
 }
 
@@ -1622,6 +1680,18 @@ func TestRunExplain_JSONOutput(t *testing.T) {
 	}
 	var result map[string]any
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
-		t.Errorf("invalid JSON: %v", err)
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if result["name"] != "EDITOR" {
+		t.Errorf("expected name=EDITOR; got %v", result)
+	}
+	if result["present"] != true {
+		t.Errorf("expected present=true; got %v", result["present"])
+	}
+	if o, _ := result["origin"].(string); o == "" {
+		t.Errorf("expected non-empty origin; got %v", result)
+	}
+	if _, ok := result["value"]; ok {
+		t.Errorf("value should be omitted without --values; got %v", result)
 	}
 }

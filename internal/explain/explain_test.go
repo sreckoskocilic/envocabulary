@@ -26,6 +26,31 @@ func TestExplain_DirenvVar(t *testing.T) {
 	}
 }
 
+func TestExplain_DeferredVarBeatsShellFileWriter(t *testing.T) {
+	current := map[string]string{"PATH": "/usr/bin"}
+	trace := []model.TraceEntry{
+		{Name: "PATH", File: "/u/.zshrc", Line: 7},
+	}
+	r := Explain("PATH", current, trace)
+	if r.Origin != model.OriginDeferred {
+		t.Errorf("origin = %q, want %q even with a shell-file writer present", r.Origin, model.OriginDeferred)
+	}
+	if r.Primary != "" {
+		t.Errorf("deferred var must not adopt a shell-file primary; got %q", r.Primary)
+	}
+}
+
+func TestExplain_DirenvVarBeatsShellFileWriter(t *testing.T) {
+	current := map[string]string{"DIRENV_DIR": "/tmp/proj"}
+	trace := []model.TraceEntry{
+		{Name: "DIRENV_DIR", File: "/u/.zshrc", Line: 9},
+	}
+	r := Explain("DIRENV_DIR", current, trace)
+	if r.Origin != model.OriginDirenv {
+		t.Errorf("origin = %q, want %q even with a shell-file writer present", r.Origin, model.OriginDirenv)
+	}
+}
+
 func TestExplain_ShellFileWithSingleWriter(t *testing.T) {
 	current := map[string]string{"EDITOR": "vim"}
 	trace := []model.TraceEntry{

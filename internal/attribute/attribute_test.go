@@ -42,6 +42,31 @@ func TestAttribute_ShellFileWins(t *testing.T) {
 	}
 }
 
+func TestAttribute_DeferredVarBeatsShellFileWriter(t *testing.T) {
+	current := map[string]string{"PATH": "/usr/bin"}
+	trace := []model.TraceEntry{
+		{Name: "PATH", File: "/u/.zshrc", Line: 7},
+	}
+	got := Attribute(current, trace)
+	if got[0].Origin != model.OriginDeferred {
+		t.Errorf("PATH origin = %q, want %q even with a shell-file writer present", got[0].Origin, model.OriginDeferred)
+	}
+	if got[0].Source == "/u/.zshrc:7" {
+		t.Errorf("deferred var must not adopt the shell-file source; got %q", got[0].Source)
+	}
+}
+
+func TestAttribute_DirenvVarBeatsShellFileWriter(t *testing.T) {
+	current := map[string]string{"DIRENV_DIR": "/tmp/proj"}
+	trace := []model.TraceEntry{
+		{Name: "DIRENV_DIR", File: "/u/.zshrc", Line: 9},
+	}
+	got := Attribute(current, trace)
+	if got[0].Origin != model.OriginDirenv {
+		t.Errorf("DIRENV_DIR origin = %q, want %q even with a shell-file writer present", got[0].Origin, model.OriginDirenv)
+	}
+}
+
 func TestAttribute_ShellFileTakesLastWriter(t *testing.T) {
 	current := map[string]string{"FOO": "bar"}
 	trace := []model.TraceEntry{
