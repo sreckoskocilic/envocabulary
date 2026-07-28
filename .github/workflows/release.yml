@@ -7,12 +7,18 @@ on:
 
 permissions: {}
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   goreleaser:
+    name: GoReleaser
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
-      contents: write
-      id-token: write
+      contents: write # create the release and upload its assets
+      id-token: write # mint the OIDC token cosign uses for keyless signing
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

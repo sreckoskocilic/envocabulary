@@ -115,7 +115,7 @@ func TestEnvWithPS4_InjectsBashFormat(t *testing.T) {
 
 func TestEnvWithPS4_StripsPreexistingPS4(t *testing.T) {
 	t.Setenv("PS4", "STALE")
-	got := envWithPS4("NEW")
+	got := buildEnv("NEW", false)
 	count := 0
 	for _, kv := range got {
 		if strings.HasPrefix(kv, "PS4=") {
@@ -266,5 +266,103 @@ func TestTracedStartupWith_TypeIntegrity(t *testing.T) {
 	want := model.TraceEntry{File: "/x", Line: 1, Name: "FOO", Raw: "export FOO=bar"}
 	if !reflect.DeepEqual(got[0], want) {
 		t.Errorf("got %+v, want %+v", got[0], want)
+	}
+}
+
+func TestBuildEnv_BaselineResetsDeferredListVars(t *testing.T) {
+	t.Setenv("PATH", "/opt/homebrew/bin:/usr/bin")
+	t.Setenv("MANPATH", "/opt/man")
+	t.Setenv("FPATH", "/opt/fpath")
+	t.Setenv("EDITOR", "vim")
+
+	got := buildEnv("PS", true)
+	seen := map[string]string{}
+	for _, kv := range got {
+		if name, val, ok := strings.Cut(kv, "="); ok {
+			seen[name] = val
+		}
+	}
+	if seen["PATH"] != BaselinePath {
+		t.Errorf("PATH = %q, want baseline %q", seen["PATH"], BaselinePath)
+	}
+	for _, n := range []string{"MANPATH", "FPATH"} {
+		if _, ok := seen[n]; ok {
+			t.Errorf("%s must be unset so the login chain rebuilds it", n)
+		}
+	}
+	if seen["EDITOR"] != "vim" {
+		t.Errorf("non-list vars must pass through; EDITOR = %q", seen["EDITOR"])
+	}
+}
+
+func TestBuildEnv_NoBaselineKeepsInheritedLists(t *testing.T) {
+	t.Setenv("PATH", "/opt/homebrew/bin:/usr/bin")
+	got := buildEnv("PS", false)
+	for _, kv := range got {
+		if kv == "PATH=/opt/homebrew/bin:/usr/bin" {
+			return
+		}
+	}
+	t.Error("without baseline the inherited PATH must pass through unchanged")
+}
+
+func TestTracerForShellBaseline(t *testing.T) {
+	z, err := TracerForShellBaseline("zsh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	zt, ok := z.(ZshTracer)
+	if !ok {
+		t.Fatalf("zsh: got %T, want ZshTracer", z)
+	}
+	if !zt.BaselineLists {
+		t.Error("baseline factory must set BaselineLists on the zsh tracer")
+	}
+
+	b, err := TracerForShellBaseline("bash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bt, ok := b.(BashTracer)
+	if !ok {
+		t.Fatalf("bash: got %T, want BashTracer", b)
+	}
+	if !bt.BaselineLists {
+		t.Error("baseline factory must set BaselineLists on the bash tracer")
+	}
+
+	if _, err := TracerForShellBaseline("fish"); err == nil {
+		t.Error("expected error for unsupported shell")
+	}
+}
+
+func TestBaselineListValue(t *testing.T) {
+	if got := BaselineListValue("PATH"); got != BaselinePath {
+		t.Errorf("PATH: got %q, want %q", got, BaselinePath)
+	}
+	for _, n := range []string{"MANPATH", "FPATH", "INFOPATH", "EDITOR"} {
+		if got := BaselineListValue(n); got != "" {
+			t.Errorf("%s: got %q, want empty (the login chain rebuilds it)", n, got)
+		}
+	}
+}
+
+func TestSourceTargets(t *testing.T) {
+	cases := []struct {
+		target string
+		file   string
+		want   bool
+	}{
+		{"/u/helpers.zsh", "/u/helpers.zsh", true},
+		{"~/helpers.zsh", "/Users/x/helpers.zsh", true},
+		{`"$ZDOTDIR/helpers.zsh"`, "/u/helpers.zsh", true},
+		{"/u/empty.zsh", "/u/.zprofile", false},
+		{"", "/u/.zprofile", false},
+		{`""`, "/u/.zprofile", false},
+	}
+	for _, tc := range cases {
+		if got := sourceTargets(tc.target, tc.file); got != tc.want {
+			t.Errorf("sourceTargets(%q, %q) = %v, want %v", tc.target, tc.file, got, tc.want)
+		}
 	}
 }

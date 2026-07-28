@@ -30,7 +30,7 @@ type VarBreakdown struct {
 	Entries []Entry `json:"entries"`
 }
 
-func Attribute(varName, currentValue string, trace []model.TraceEntry) VarBreakdown {
+func Attribute(varName, currentValue, initialValue string, trace []model.TraceEntry) VarBreakdown {
 	dirs := splitPath(currentValue)
 	if len(dirs) == 0 {
 		return VarBreakdown{Name: varName}
@@ -44,7 +44,7 @@ func Attribute(varName, currentValue string, trace []model.TraceEntry) VarBreakd
 	}
 
 	provenance := make(map[string]model.TraceEntry)
-	var prev map[string]bool
+	prev := toSet(splitPath(initialValue))
 	for _, w := range writers {
 		val := extractValue(w.Raw, varName)
 		cur := toSet(splitPath(val))

@@ -71,7 +71,7 @@ func TestAttribute_SingleWriter(t *testing.T) {
 	trace := []model.TraceEntry{
 		{Name: "PATH", File: "/u/.zshrc", Line: 3, Raw: "export PATH=/usr/bin:/usr/local/bin"},
 	}
-	r := Attribute("PATH", "/usr/bin:/usr/local/bin", trace)
+	r := Attribute("PATH", "/usr/bin:/usr/local/bin", "", trace)
 	if r.Name != "PATH" {
 		t.Errorf("name = %q", r.Name)
 	}
@@ -90,7 +90,7 @@ func TestAttribute_AppendPattern(t *testing.T) {
 		{Name: "PATH", File: "/u/.zprofile", Line: 3, Raw: "export PATH=/usr/bin:/usr/local/bin"},
 		{Name: "PATH", File: "/u/.zshrc", Line: 10, Raw: "export PATH=/usr/bin:/usr/local/bin:/opt/homebrew/bin"},
 	}
-	r := Attribute("PATH", "/usr/bin:/usr/local/bin:/opt/homebrew/bin", trace)
+	r := Attribute("PATH", "/usr/bin:/usr/local/bin:/opt/homebrew/bin", "", trace)
 	if len(r.Entries) != 3 {
 		t.Fatalf("got %d entries, want 3", len(r.Entries))
 	}
@@ -110,7 +110,7 @@ func TestAttribute_PrependPattern(t *testing.T) {
 		{Name: "PATH", File: "/u/.zprofile", Line: 3, Raw: "export PATH=/usr/bin:/usr/local/bin"},
 		{Name: "PATH", File: "/u/.zshrc", Line: 10, Raw: "export PATH=/opt/homebrew/bin:/usr/bin:/usr/local/bin"},
 	}
-	r := Attribute("PATH", "/opt/homebrew/bin:/usr/bin:/usr/local/bin", trace)
+	r := Attribute("PATH", "/opt/homebrew/bin:/usr/bin:/usr/local/bin", "", trace)
 	if len(r.Entries) != 3 {
 		t.Fatalf("got %d entries, want 3", len(r.Entries))
 	}
@@ -128,7 +128,7 @@ func TestAttribute_ReintroducedEntry(t *testing.T) {
 		{Name: "PATH", File: "/u/.zshrc", Line: 1, Raw: "PATH=/c"},
 		{Name: "PATH", File: "/u/.zshrc", Line: 5, Raw: "PATH=/c:/a"},
 	}
-	r := Attribute("PATH", "/c:/a", trace)
+	r := Attribute("PATH", "/c:/a", "", trace)
 	if len(r.Entries) != 2 {
 		t.Fatalf("got %d entries, want 2", len(r.Entries))
 	}
@@ -141,7 +141,7 @@ func TestAttribute_ReintroducedEntry(t *testing.T) {
 }
 
 func TestAttribute_InheritedEntries(t *testing.T) {
-	r := Attribute("PATH", "/usr/bin:/usr/local/bin", nil)
+	r := Attribute("PATH", "/usr/bin:/usr/local/bin", "", nil)
 	if len(r.Entries) != 2 {
 		t.Fatalf("got %d entries, want 2", len(r.Entries))
 	}
@@ -156,7 +156,7 @@ func TestAttribute_MixedInheritedAndTraced(t *testing.T) {
 	trace := []model.TraceEntry{
 		{Name: "PATH", File: "/u/.zshrc", Line: 5, Raw: "export PATH=/usr/bin:/opt/new"},
 	}
-	r := Attribute("PATH", "/usr/bin:/opt/new:/inherited", trace)
+	r := Attribute("PATH", "/usr/bin:/opt/new:/inherited", "", trace)
 	if len(r.Entries) != 3 {
 		t.Fatalf("got %d entries, want 3", len(r.Entries))
 	}
@@ -172,7 +172,7 @@ func TestAttribute_WithChain(t *testing.T) {
 	trace := []model.TraceEntry{
 		{Name: "PATH", File: "/u/helpers.sh", Line: 5, Raw: "export PATH=/usr/bin", Chain: []string{"/u/.zshrc"}},
 	}
-	r := Attribute("PATH", "/usr/bin", trace)
+	r := Attribute("PATH", "/usr/bin", "", trace)
 	if len(r.Entries) != 1 {
 		t.Fatalf("got %d entries, want 1", len(r.Entries))
 	}
@@ -186,7 +186,7 @@ func TestAttribute_ChainNotShared(t *testing.T) {
 	trace := []model.TraceEntry{
 		{Name: "PATH", File: "/u/helpers.sh", Line: 5, Raw: "export PATH=/usr/bin", Chain: chain},
 	}
-	r := Attribute("PATH", "/usr/bin", trace)
+	r := Attribute("PATH", "/usr/bin", "", trace)
 
 	r.Entries[0].Chain[0] = "mutated"
 	if chain[0] != "/u/.zshrc" {
@@ -197,7 +197,7 @@ func TestAttribute_ChainNotShared(t *testing.T) {
 	trace2 := []model.TraceEntry{
 		{Name: "PATH", File: "/u/helpers.sh", Line: 5, Raw: "export PATH=/usr/bin", Chain: chain2},
 	}
-	r2 := Attribute("PATH", "/usr/bin", trace2)
+	r2 := Attribute("PATH", "/usr/bin", "", trace2)
 	chain2[0] = "mutated"
 	if r2.Entries[0].Chain[0] != "/u/.zshrc" {
 		t.Errorf("mutating input chain after call must not affect output")
@@ -209,7 +209,7 @@ func TestAttribute_OtherVarsFiltered(t *testing.T) {
 		{Name: "FOO", File: "/u/.zshrc", Line: 1, Raw: "export FOO=bar"},
 		{Name: "PATH", File: "/u/.zshrc", Line: 3, Raw: "export PATH=/usr/bin"},
 	}
-	r := Attribute("PATH", "/usr/bin", trace)
+	r := Attribute("PATH", "/usr/bin", "", trace)
 	if len(r.Entries) != 1 {
 		t.Fatalf("got %d entries, want 1", len(r.Entries))
 	}
@@ -218,8 +218,28 @@ func TestAttribute_OtherVarsFiltered(t *testing.T) {
 	}
 }
 
+func TestAttribute_InitialValueIsNotAttributed(t *testing.T) {
+	trace := []model.TraceEntry{
+		{File: "/etc/zprofile", Line: 1, Name: "PATH", Raw: `PATH="/usr/bin:/bin:/opt/new"`},
+	}
+	r := Attribute("PATH", "/usr/bin:/bin:/opt/new", "/usr/bin:/bin", trace)
+	byDir := map[string]Entry{}
+	for _, e := range r.Entries {
+		byDir[e.Dir] = e
+	}
+	for _, d := range []string{"/usr/bin", "/bin"} {
+		if byDir[d].File != "" {
+			t.Errorf("%s predates the login chain; it must not be credited to %s:%d",
+				d, byDir[d].File, byDir[d].Line)
+		}
+	}
+	if byDir["/opt/new"].File != "/etc/zprofile" {
+		t.Errorf("/opt/new is genuinely new, expected /etc/zprofile, got %q", byDir["/opt/new"].File)
+	}
+}
+
 func TestAttribute_EmptyCurrentValue(t *testing.T) {
-	r := Attribute("PATH", "", nil)
+	r := Attribute("PATH", "", "", nil)
 	if len(r.Entries) != 0 {
 		t.Errorf("got %d entries, want 0", len(r.Entries))
 	}
@@ -229,7 +249,7 @@ func TestAttribute_NonPathVar(t *testing.T) {
 	trace := []model.TraceEntry{
 		{Name: "MANPATH", File: "/u/.zshrc", Line: 7, Raw: "export MANPATH=/usr/share/man"},
 	}
-	r := Attribute("MANPATH", "/usr/share/man", trace)
+	r := Attribute("MANPATH", "/usr/share/man", "", trace)
 	if len(r.Entries) != 1 {
 		t.Fatalf("got %d entries, want 1", len(r.Entries))
 	}
@@ -242,7 +262,7 @@ func TestAttribute_DuplicateEntriesInCurrentValue(t *testing.T) {
 	trace := []model.TraceEntry{
 		{Name: "PATH", File: "/u/.zshrc", Line: 3, Raw: "export PATH=/a:/a"},
 	}
-	r := Attribute("PATH", "/a:/a", trace)
+	r := Attribute("PATH", "/a:/a", "", trace)
 	if len(r.Entries) != 2 {
 		t.Fatalf("got %d entries, want 2 (preserves duplicates)", len(r.Entries))
 	}

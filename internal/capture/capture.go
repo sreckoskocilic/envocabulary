@@ -18,7 +18,8 @@ import (
 
 const (
 	traceTimeout  = 30 * time.Second
-	maxTraceBytes = 100 * 1024 * 1024 // 100 MB
+	waitDelay     = 5 * time.Second
+	maxTraceBytes = 100 * 1024 * 1024
 )
 
 var errTraceTooLarge = errors.New("trace output exceeded 100 MB; shell startup may contain a loop")
@@ -49,15 +50,16 @@ func currentEnv() (map[string]string, error) {
 	return parseNullSeparated(out), nil
 }
 
-type ZshTracer struct{}
+type ZshTracer struct{ BaselineLists bool }
 
-func (ZshTracer) RawTrace() (string, error) {
+func (t ZshTracer) RawTrace() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), traceTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "zsh", "-l", "-i", "-x", "-c", "exit")
-	cmd.Env = envWithPS4("+%x:%i> ")
+	cmd.Env = buildEnv("+%x:%i> ", t.BaselineLists)
 	stderr := &boundedWriter{max: maxTraceBytes}
 	cmd.Stderr = stderr
+	cmd.WaitDelay = waitDelay
 	err := cmd.Run()
 	out := stderr.String()
 	if err != nil && out == "" {
@@ -66,15 +68,16 @@ func (ZshTracer) RawTrace() (string, error) {
 	return out, nil
 }
 
-type BashTracer struct{}
+type BashTracer struct{ BaselineLists bool }
 
-func (BashTracer) RawTrace() (string, error) {
+func (t BashTracer) RawTrace() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), traceTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "bash", "-l", "-i", "-x", "-c", "exit")
-	cmd.Env = envWithPS4(`+${BASH_SOURCE}:${LINENO}> `)
+	cmd.Env = buildEnv(`+${BASH_SOURCE}:${LINENO}> `, t.BaselineLists)
 	stderr := &boundedWriter{max: maxTraceBytes}
 	cmd.Stderr = stderr
+	cmd.WaitDelay = waitDelay
 	err := cmd.Run()
 	out := stderr.String()
 	if err != nil && out == "" {
@@ -114,27 +117,50 @@ func DetectShell() string {
 	return "zsh"
 }
 
-func TracerForShell(name string) (Tracer, error) {
+func TracerForShell(name string) (Tracer, error) { return tracerFor(name, false) }
+
+func TracerForShellBaseline(name string) (Tracer, error) { return tracerFor(name, true) }
+
+func tracerFor(name string, baselineLists bool) (Tracer, error) {
 	if name == "" {
 		name = DetectShell()
 	}
 	switch name {
 	case "zsh":
-		return ZshTracer{}, nil
+		return ZshTracer{BaselineLists: baselineLists}, nil
 	case "bash":
-		return BashTracer{}, nil
+		return BashTracer{BaselineLists: baselineLists}, nil
 	}
 	return nil, fmt.Errorf("unsupported shell %q (want zsh or bash)", name)
 }
 
-func envWithPS4(ps4 string) []string {
+const BaselinePath = "/usr/bin:/bin:/usr/sbin:/sbin"
+
+func BaselineListValue(name string) string {
+	if name == "PATH" {
+		return BaselinePath
+	}
+	return ""
+}
+
+func envWithPS4(ps4 string) []string { return buildEnv(ps4, false) }
+
+func buildEnv(ps4 string, baselineLists bool) []string {
 	e := os.Environ()
-	out := make([]string, 0, len(e)+1)
+	out := make([]string, 0, len(e)+2)
 	for _, kv := range e {
 		if strings.HasPrefix(kv, "PS4=") {
 			continue
 		}
+		if baselineLists {
+			if name, _, ok := strings.Cut(kv, "="); ok && model.IsDeferredListVar(name) {
+				continue
+			}
+		}
 		out = append(out, kv)
+	}
+	if baselineLists {
+		out = append(out, "PATH="+BaselinePath)
 	}
 	out = append(out, "PS4="+ps4)
 	return out
@@ -158,15 +184,23 @@ func parseNullSeparated(b []byte) map[string]string {
 var (
 	traceLineRe = regexp.MustCompile(`^(\++)(.+?):(\d+)> (.*)$`)
 	assignRe    = regexp.MustCompile(`(?:^|\s)(?:export\s+|typeset(?:\s+-[a-zA-Z]+)*\s+|declare(?:\s+-[a-zA-Z]+)*\s+|local(?:\s+-[a-zA-Z]+)*\s+)?([A-Za-z_][A-Za-z0-9_]*)=`)
-	sourceRe    = regexp.MustCompile(`^(?:source|\.)\s+`)
+	sourceRe    = regexp.MustCompile(`^(?:source|\.)\s+(\S+)`)
 )
+
+func sourceTargets(target, file string) bool {
+	t := strings.Trim(target, `"'`)
+	if t == "" {
+		return false
+	}
+	return filepath.Base(t) == filepath.Base(file)
+}
 
 func parseTrace(s string) []model.TraceEntry {
 	lines := strings.Split(s, "\n")
 	var entries []model.TraceEntry //nolint:prealloc // most lines are non-trace noise
 	var stack []string
 	currentFile := ""
-	prevWasSource := false
+	pendingSource := ""
 
 	for _, line := range lines {
 		m := traceLineRe.FindStringSubmatch(line)
@@ -177,7 +211,7 @@ func parseTrace(s string) []model.TraceEntry {
 		ln, _ := strconv.Atoi(lineStr)
 
 		if file != currentFile {
-			if prevWasSource && !strings.HasPrefix(file, "(") {
+			if pendingSource != "" && !strings.HasPrefix(file, "(") && sourceTargets(pendingSource, file) {
 				if idx := fileIndex(stack, file); idx >= 0 {
 					stack = stack[:idx+1]
 				} else {
@@ -191,7 +225,11 @@ func parseTrace(s string) []model.TraceEntry {
 			currentFile = file
 		}
 
-		prevWasSource = sourceRe.MatchString(rest)
+		if sm := sourceRe.FindStringSubmatch(rest); sm != nil {
+			pendingSource = sm[1]
+		} else {
+			pendingSource = ""
+		}
 
 		am := assignRe.FindStringSubmatch(rest)
 		if am == nil {

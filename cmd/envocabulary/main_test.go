@@ -368,7 +368,8 @@ func TestRunDedup_NoDuplicates(t *testing.T) {
 func TestRunDedup_BashAndOrphansFlags(t *testing.T) {
 	setupFakeShellHome(t, map[string]string{
 		".zshrc":        "export FOO=zsh\n",
-		".bashrc":       "export FOO=bash\n",
+		".bashrc":       "export FOO=bash\nexport BAR=two\n",
+		".bash_profile": "export BAR=one\n",
 		".zshrc.backup": "export FOO=backup\n",
 	})
 	var stdout, stderr bytes.Buffer
@@ -376,8 +377,12 @@ func TestRunDedup_BashAndOrphansFlags(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("got %d", code)
 	}
-	if !strings.Contains(stdout.String(), "FOO") {
-		t.Errorf("expected FOO duplicates across zsh/bash/orphan; got:\n%s", stdout.String())
+	out := stdout.String()
+	if !strings.Contains(out, "BAR") {
+		t.Errorf("expected BAR duplicate within the bash login chain; got:\n%s", out)
+	}
+	if strings.Contains(out, "FOO") {
+		t.Errorf("FOO is defined once per shell and once in a never-sourced backup; it must not be a duplicate. got:\n%s", out)
 	}
 }
 
@@ -866,16 +871,21 @@ func TestRunReport_HTML(t *testing.T) {
 
 func TestRunReport_BashFlag(t *testing.T) {
 	setupFakeShellHome(t, map[string]string{
-		".zshrc":  "export FOO=zsh\n",
-		".bashrc": "export FOO=bash\n",
+		".zshrc":        "export FOO=zsh\n",
+		".bashrc":       "export FOO=bash\nexport BAR=two\n",
+		".bash_profile": "export BAR=one\n",
 	})
 	var stdout, stderr bytes.Buffer
 	code := runReport([]string{"--bash"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("expected 0, got %d", code)
 	}
-	if !strings.Contains(stdout.String(), "FOO") {
-		t.Errorf("expected FOO in output with --bash; got:\n%s", stdout.String())
+	out := stdout.String()
+	if !strings.Contains(out, "BAR") {
+		t.Errorf("expected BAR duplicate within the bash login chain; got:\n%s", out)
+	}
+	if strings.Contains(out, "FOO") {
+		t.Errorf("zsh and bash never both run; FOO must not be a cross-shell duplicate. got:\n%s", out)
 	}
 }
 

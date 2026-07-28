@@ -50,10 +50,16 @@ Static files:
 - `dedup` — cross-file duplicate report for exports, assigns, aliases, functions
 - `dangling` — lists config file entries that no longer reference a valid target
 - `lost` — lists definitions unique to orphan/backup config files
-- `report` — combined audit: safe-to-delete, review (value-changed dups), dangling, orphaned files
+- `report` — combined audit: safe-to-delete, review (value-changed dups), dangling, orphaned files; `--html` writes a timestamped `.html` file into the current directory
 - `clean [--full] FILE` — lists lines to be stripped; with `--full`, prints complete cleaned content
 
+Other:
+
+- `-V`, `--version` — print version, commit, and build date
+
 `envocabulary <cmd> -h` for flags.
+
+Sample output below uses `~/` for brevity; the tool prints absolute paths everywhere except `report`.
 
 ## Another example: finding broken references
 

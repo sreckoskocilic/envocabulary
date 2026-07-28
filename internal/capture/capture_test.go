@@ -194,6 +194,30 @@ func TestParseTrace(t *testing.T) {
 	}
 }
 
+func TestParseTrace_EmptySourceDoesNotFabricateChain(t *testing.T) {
+	in := "+/u/.zshenv:9> source /u/empty.zsh\n" +
+		"+/u/.zprofile:1> export A=1\n"
+	got := parseTrace(in)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(got))
+	}
+	if len(got[0].Chain) != 0 {
+		t.Errorf("the sourced file produced no trace lines, so .zprofile has no parent; got Chain=%v", got[0].Chain)
+	}
+}
+
+func TestParseTrace_RealSourceStillBuildsChain(t *testing.T) {
+	in := "+/u/.zshrc:9> source /u/helpers.zsh\n" +
+		"+/u/helpers.zsh:2> export A=1\n"
+	got := parseTrace(in)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(got))
+	}
+	if len(got[0].Chain) != 1 || got[0].Chain[0] != "/u/.zshrc" {
+		t.Errorf("expected Chain=[/u/.zshrc], got %v", got[0].Chain)
+	}
+}
+
 func TestBoundedWriter(t *testing.T) {
 	w := &boundedWriter{max: 10}
 	n, err := w.Write([]byte("hello"))

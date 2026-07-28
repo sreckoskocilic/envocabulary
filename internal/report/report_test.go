@@ -86,11 +86,14 @@ func TestBuildFunctionDef(t *testing.T) {
 		}},
 	}
 	r := Build(files)
-	if len(r.Safe) != 1 {
-		t.Fatalf("expected 1 safe entry for function, got %d", len(r.Safe))
+	if len(r.Safe) != 0 {
+		t.Fatalf("function bodies are not parsed, so duplicates must not be called safe; got %d", len(r.Safe))
 	}
-	if r.Safe[0].Definition != "function mkcd" {
-		t.Errorf("expected 'function mkcd', got %q", r.Safe[0].Definition)
+	if len(r.Review) != 1 {
+		t.Fatalf("expected 1 review entry for function, got %d", len(r.Review))
+	}
+	if r.Review[0].Definition != "function mkcd" {
+		t.Errorf("expected 'function mkcd', got %q", r.Review[0].Definition)
 	}
 }
 

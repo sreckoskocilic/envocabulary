@@ -22,12 +22,12 @@ var (
 	commentInnerRe = regexp.MustCompile(`^\s*#\s?(.*)$`)
 	decorationRe   = regexp.MustCompile(`^[-=#*~_+/\\]+$`)
 
-	commentedExportRe    = regexp.MustCompile(`^export\s+[A-Za-z_]`)
+	commentedExportRe    = regexp.MustCompile(`^export\s+[A-Za-z_][A-Za-z0-9_]*=`)
 	commentedAliasRe     = regexp.MustCompile(`^alias\s+`)
 	commentedFuncKwRe    = regexp.MustCompile(`^function\s+[A-Za-z_]`)
 	commentedFuncParenRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*\s*\(\s*\)`)
-	commentedSourceRe    = regexp.MustCompile(`^(?:source|\.)\s+\S`)
-	commentedAssignRe    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*\s*=`)
+	commentedSourceRe    = regexp.MustCompile(`^(?:source|\.)\s+(?:["'~$/]|\S*[/.])`)
+	commentedAssignRe    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
 	commentedPluginsRe   = regexp.MustCompile(`^plugins\s*=\s*\(`)
 )
 

@@ -116,6 +116,11 @@ Static-file:
 
   report [--html] [--bash]
       Combined audit: safe-to-delete, review, dangling, orphaned files.
+      --html writes a timestamped .html file into the current directory.
+
+Other:
+  -V, --version
+      Prints version, commit, and build date.
 
 Run with no arguments for scan. envocabulary <command> -h for per-command help.
 `)
@@ -773,7 +778,7 @@ func runPath(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	tracer, err := capture.TracerForShell(*shellFlag)
+	tracer, err := capture.TracerForShellBaseline(*shellFlag)
 	if err != nil {
 		fmt.Fprintln(stderr, "error:", err)
 		return 2
@@ -831,7 +836,7 @@ func resolvePathTargets(fs *flag.FlagSet, current map[string]string) []string {
 func collectBreakdowns(varNames []string, current map[string]string, trace []model.TraceEntry) []pathentry.VarBreakdown {
 	var results []pathentry.VarBreakdown
 	for _, name := range varNames {
-		r := pathentry.Attribute(name, current[name], trace)
+		r := pathentry.Attribute(name, current[name], capture.BaselineListValue(name), trace)
 		if len(r.Entries) > 0 {
 			pathentry.CheckExists(r.Entries)
 			results = append(results, r)

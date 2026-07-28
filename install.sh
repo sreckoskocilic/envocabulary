@@ -11,6 +11,16 @@ BIN_NAME="envocabulary"
 VERSION=""
 BIN_DIR=""
 
+fetch() {
+    curl -fsSL --proto '=https' --proto-redir '=https' \
+        --connect-timeout 10 --max-time 300 "$@"
+}
+
+fetch_head() {
+    curl -fsSI --proto '=https' --proto-redir '=https' \
+        --connect-timeout 10 --max-time 60 "$@"
+}
+
 usage() {
     cat <<EOF
 envocabulary installer
@@ -88,6 +98,14 @@ pick_bin_dir() {
 }
 
 DEST_DIR=$(pick_bin_dir)
+if ! mkdir -p "$DEST_DIR" 2>/dev/null || [ ! -d "$DEST_DIR" ]; then
+    echo "install destination is not a usable directory: $DEST_DIR" >&2
+    exit 1
+fi
+if [ ! -w "$DEST_DIR" ]; then
+    echo "install destination is not writable: $DEST_DIR" >&2
+    exit 1
+fi
 DEST="$DEST_DIR/$BIN_NAME"
 
 # --- resolve version -----------------------------------------------------------
@@ -97,7 +115,7 @@ resolve_version() {
         echo "$VERSION"
         return
     fi
-    v=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
+    v=$(fetch "https://api.github.com/repos/$REPO/releases/latest" \
         | grep -m1 '"tag_name"' \
         | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
     if [ -n "$v" ]; then
@@ -105,7 +123,7 @@ resolve_version() {
         return
     fi
     # fallback: API unreachable or rate-limited (60 req/hr unauth)
-    curl -fsSI "https://github.com/$REPO/releases/latest" \
+    fetch_head "https://github.com/$REPO/releases/latest" \
         | awk -F/ '/^location:|^Location:/ {gsub(/[\r\n]/,"",$NF); print $NF}' \
         | tail -n1
 }
@@ -125,21 +143,21 @@ BASE_URL="https://github.com/$REPO/releases/download/$VERSION"
 URL="$BASE_URL/$ARCHIVE"
 
 TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
+trap 'rm -rf "$TMP"' EXIT INT TERM HUP
 
 echo "Downloading $URL"
-if ! curl -fsSL "$URL" -o "$TMP/$ARCHIVE"; then
+if ! fetch "$URL" -o "$TMP/$ARCHIVE"; then
     echo "download failed; check that release $VERSION exists for $OS/$ARCH" >&2
     exit 1
 fi
 
 echo "Verifying checksum..."
-if ! curl -fsSL "$BASE_URL/$CHECKSUMS" -o "$TMP/$CHECKSUMS"; then
+if ! fetch "$BASE_URL/$CHECKSUMS" -o "$TMP/$CHECKSUMS"; then
     echo "checksum file download failed; cannot verify integrity" >&2
     exit 1
 fi
 
-EXPECTED=$(grep "$ARCHIVE" "$TMP/$CHECKSUMS" | awk '{print $1}')
+EXPECTED=$(awk -v a="$ARCHIVE" '$2 == a {print $1; exit}' "$TMP/$CHECKSUMS")
 if [ -z "$EXPECTED" ]; then
     echo "no checksum found for $ARCHIVE in $CHECKSUMS" >&2
     exit 1
@@ -163,11 +181,12 @@ fi
 
 if command -v cosign >/dev/null 2>&1; then
     BUNDLE_URL="$BASE_URL/$CHECKSUMS.bundle"
-    if curl -fsSL "$BUNDLE_URL" -o "$TMP/$CHECKSUMS.bundle" 2>/dev/null; then
+    if fetch "$BUNDLE_URL" -o "$TMP/$CHECKSUMS.bundle" 2>/dev/null; then
         echo "Verifying cosign signature..."
+        REPO_RE=$(printf '%s' "$REPO" | sed 's/[.[\*^$\/]/\\&/g')
         if cosign verify-blob \
             --bundle "$TMP/$CHECKSUMS.bundle" \
-            --certificate-identity-regexp "https://github.com/$REPO" \
+            --certificate-identity-regexp "^https://github\.com/${REPO_RE}/\.github/workflows/release\.yml@refs/tags/" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
             "$TMP/$CHECKSUMS" >/dev/null 2>&1; then
             echo "✓ Cosign signature verified"

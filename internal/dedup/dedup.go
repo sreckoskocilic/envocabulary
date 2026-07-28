@@ -33,12 +33,16 @@ var dedupKinds = map[inventory.Kind]bool{
 
 func Find(files []inventory.File) []Group {
 	type entry struct {
-		occ  Occurrence
-		rank int
+		occ   Occurrence
+		rank  int
+		shell inventory.Role
 	}
 	var entries []entry
 	rank := 0
 	for _, f := range files {
+		if f.Role == inventory.RoleOrphan {
+			continue
+		}
 		for _, it := range f.Items {
 			if !dedupKinds[it.Kind] {
 				continue
@@ -47,8 +51,9 @@ func Find(files []inventory.File) []Group {
 				continue
 			}
 			entries = append(entries, entry{
-				occ:  Occurrence{File: f.Path, Kind: it.Kind, Name: it.Name, Line: it.Line, Value: it.Value},
-				rank: rank,
+				occ:   Occurrence{File: f.Path, Kind: it.Kind, Name: it.Name, Line: it.Line, Value: it.Value},
+				rank:  rank,
+				shell: f.Role,
 			})
 			rank++
 		}
@@ -56,7 +61,7 @@ func Find(files []inventory.File) []Group {
 
 	buckets := map[string][]entry{}
 	for _, e := range entries {
-		key := string(e.occ.Kind) + "\x00" + e.occ.Name
+		key := string(e.shell) + "\x00" + string(e.occ.Kind) + "\x00" + e.occ.Name
 		buckets[key] = append(buckets[key], e)
 	}
 

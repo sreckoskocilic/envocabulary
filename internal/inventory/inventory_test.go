@@ -43,14 +43,24 @@ func TestParseReader(t *testing.T) {
 			[]Item{{Kind: KindAssign, Name: "ZSH_THEME", Line: 1, Value: "robbyrussell"}},
 		},
 		{
+			"export with backslash-escaped space in path",
+			`export TOOLS=/opt/my\ app/bin`,
+			[]Item{{Kind: KindExport, Name: "TOOLS", Line: 1, Value: "/opt/my app/bin"}},
+		},
+		{
+			"export unquoted value stops before trailing comment",
+			`export A=1 # trailing`,
+			[]Item{{Kind: KindExport, Name: "A", Line: 1, Value: "1"}},
+		},
+		{
 			"alias simple",
 			`alias ll='ls -la'`,
-			[]Item{{Kind: KindAlias, Name: "ll", Line: 1}},
+			[]Item{{Kind: KindAlias, Name: "ll", Line: 1, Value: "ls -la"}},
 		},
 		{
 			"alias with flag",
 			`alias -g G='| grep'`,
-			[]Item{{Kind: KindAlias, Name: "G", Line: 1}},
+			[]Item{{Kind: KindAlias, Name: "G", Line: 1, Value: "| grep"}},
 		},
 		{
 			"function keyword form",
@@ -118,7 +128,7 @@ func TestParseReader(t *testing.T) {
 			}, "\n"),
 			[]Item{
 				{Kind: KindExport, Name: "A", Line: 2, Value: "1"},
-				{Kind: KindAlias, Name: "ll", Line: 4},
+				{Kind: KindAlias, Name: "ll", Line: 4, Value: "ls"},
 				{Kind: KindFunction, Name: "mkcd", Line: 5},
 			},
 		},
@@ -183,7 +193,9 @@ func TestFileRank(t *testing.T) {
 		{"/u/.zlogin", RoleCanonicalZsh, 3},
 		{"/u/.zlogout", RoleCanonicalZsh, 4},
 		{".zshrc", RoleCanonicalZsh, 2},
-		{"/u/.bashrc", RoleCanonicalBash, 100},
+		{"/u/.profile", RoleCanonicalBash, 100},
+		{"/u/.bash_profile", RoleCanonicalBash, 101},
+		{"/u/.bashrc", RoleCanonicalBash, 102},
 		{"/u/.zshrc.bak", RoleOrphan, 200},
 		{"/u/x", Role("nonsense"), 999},
 	}

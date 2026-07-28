@@ -85,6 +85,34 @@ func TestFindExcludesDeferredListVars(t *testing.T) {
 	}
 }
 
+func TestFindExcludesOrphans(t *testing.T) {
+	files := []inventory.File{
+		{Path: "/u/.zshrc", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{
+			{Kind: inventory.KindExport, Name: "EDITOR", Line: 1, Value: "vim"},
+		}},
+		{Path: "/u/.zshrc.backup", Role: inventory.RoleOrphan, Items: []inventory.Item{
+			{Kind: inventory.KindExport, Name: "EDITOR", Line: 1, Value: "nano"},
+		}},
+	}
+	if groups := Find(files); len(groups) != 0 {
+		t.Errorf("a never-sourced backup must not win over a live file, got %+v", groups)
+	}
+}
+
+func TestFindSeparatesShells(t *testing.T) {
+	files := []inventory.File{
+		{Path: "/u/.zshrc", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{
+			{Kind: inventory.KindExport, Name: "FOO", Line: 1, Value: "zsh"},
+		}},
+		{Path: "/u/.bashrc", Role: inventory.RoleCanonicalBash, Items: []inventory.Item{
+			{Kind: inventory.KindExport, Name: "FOO", Line: 1, Value: "bash"},
+		}},
+	}
+	if groups := Find(files); len(groups) != 0 {
+		t.Errorf("zsh and bash never both run, so they cannot shadow each other; got %+v", groups)
+	}
+}
+
 func TestFind_MixedKindsSortCorrectly(t *testing.T) {
 	files := []inventory.File{
 		{Path: "/a", Items: []inventory.Item{

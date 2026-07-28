@@ -144,7 +144,7 @@ func parseFile(path string, role Role) File {
 var (
 	exportRe    = regexp.MustCompile(`^\s*export\s+([A-Za-z_][A-Za-z0-9_]*)(?:=(.*))?$`)
 	assignRe    = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_]*)=(.*)$`)
-	aliasRe     = regexp.MustCompile(`^\s*alias\s+(?:-[a-zA-Z]+\s+)*([A-Za-z_][A-Za-z0-9_.-]*)=`)
+	aliasRe     = regexp.MustCompile(`^\s*alias\s+(?:-[a-zA-Z]+\s+)*([A-Za-z_][A-Za-z0-9_.-]*)=(.*)$`)
 	funcKwRe    = regexp.MustCompile(`^\s*function\s+([A-Za-z_][A-Za-z0-9_.-]*)`)
 	funcParenRe = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_.-]*)\s*\(\s*\)`)
 	sourceRe    = regexp.MustCompile(`^\s*(?:source|\.)\s+("[^"]*"|'[^']*'|\S+)`)
@@ -169,10 +169,19 @@ func extractValue(raw string) string {
 		}
 		return raw[1:]
 	}
-	if i := strings.IndexAny(raw, " \t"); i >= 0 {
-		return raw[:i]
+	var b strings.Builder
+	for i := 0; i < len(raw); i++ {
+		if raw[i] == '\\' && i+1 < len(raw) {
+			b.WriteByte(raw[i+1])
+			i++
+			continue
+		}
+		if raw[i] == ' ' || raw[i] == '\t' {
+			break
+		}
+		b.WriteByte(raw[i])
 	}
-	return raw
+	return b.String()
 }
 
 func stripQuotes(s string) string {
@@ -186,13 +195,17 @@ var ZshLoginRank = map[string]int{
 	".zshenv": 0, ".zprofile": 1, ".zshrc": 2, ".zlogin": 3, ".zlogout": 4,
 }
 
+var BashLoginRank = map[string]int{
+	".profile": 0, ".bash_profile": 1, ".bashrc": 2,
+}
+
 func FileRank(f File) int {
 	base := filepath.Base(f.Path)
 	switch f.Role {
 	case RoleCanonicalZsh:
 		return ZshLoginRank[base]
 	case RoleCanonicalBash:
-		return 100
+		return 100 + BashLoginRank[base]
 	case RoleOrphan:
 		return 200
 	}
@@ -246,7 +259,7 @@ func ParseReader(r io.Reader) ([]Item, error) {
 			continue
 		}
 		if m := aliasRe.FindStringSubmatch(line); m != nil {
-			items = append(items, Item{Kind: KindAlias, Name: m[1], Line: lineNo})
+			items = append(items, Item{Kind: KindAlias, Name: m[1], Line: lineNo, Value: extractValue(m[2])})
 			continue
 		}
 		if m := funcKwRe.FindStringSubmatch(line); m != nil {

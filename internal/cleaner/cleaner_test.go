@@ -186,10 +186,39 @@ func TestIsCommentedCode(t *testing.T) {
 		`If you come from bash you might...`: false,
 		`aliases`:                            false,
 		``:                                   false,
+
+		`max = 10 retries before giving up`:         false,
+		`HISTSIZE = how many lines zsh keeps`:       false,
+		`NOTE = this is prose, not an assignment`:   false,
+		`export these for the build tools`:          false,
+		`source of truth for my aliases lives here`: false,
 	}
 	for in, want := range cases {
 		if got := isCommentedCode(in); got != want {
 			t.Errorf("isCommentedCode(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+func TestProcess_KeepsProseWithSpacedEquals(t *testing.T) {
+	in := strings.Join([]string{
+		`# max = 10 retries before giving up`,
+		`export RETRIES=10`,
+		`# HISTSIZE = how many lines zsh keeps in memory`,
+		`export HISTSIZE=5000`,
+		`# source of truth for my aliases lives here`,
+		`source ~/.aliases`,
+	}, "\n")
+	decisions, stats, err := Process(strings.NewReader(in))
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if stats.Stripped != 0 {
+		t.Fatalf("prose comments must never be stripped; stripped %d", stats.Stripped)
+	}
+	for _, d := range decisions {
+		if !d.Kept {
+			t.Errorf("line %d dropped: %q", d.LineNum, d.Content)
 		}
 	}
 }

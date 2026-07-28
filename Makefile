@@ -8,7 +8,11 @@ COVERAGE_MIN    ?= 95
 BINARY          ?= envocabulary
 PKGS            ?= ./...
 
-all: lint test build  ## Run lint, tests, and build (default)
+GOLANGCI_VERSION ?= v2.12.2
+GORELEASER_VERSION ?= v2.17.1
+GOFUMPT_VERSION ?= v0.9.1
+
+all: lint cover build  ## Run lint, tests with the coverage gate, and build (default)
 
 build:  ## Build the binary
 	$(GO) build -o $(BINARY) ./cmd/envocabulary
@@ -46,16 +50,16 @@ tidy:  ## Tidy go.mod
 	$(GO) mod tidy
 
 clean:  ## Remove build artifacts
-	rm -f $(BINARY) $(COVERAGE_FILE) coverage.html
+	rm -f $(BINARY) $(COVERAGE_FILE) coverage.gated.out coverage.html
 	rm -rf dist/
 
 release-snapshot:  ## Build a local snapshot release with goreleaser (requires goreleaser installed)
 	goreleaser release --snapshot --clean --skip=publish
 
-install-tools:  ## Install dev tooling (golangci-lint, gofumpt, goreleaser)
-	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
-	$(GO) install mvdan.cc/gofumpt@latest
-	$(GO) install github.com/goreleaser/goreleaser/v2@latest
+install-tools:  ## Install dev tooling pinned to the versions CI uses
+	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
+	$(GO) install mvdan.cc/gofumpt@$(GOFUMPT_VERSION)
+	$(GO) install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
