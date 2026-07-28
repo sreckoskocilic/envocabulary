@@ -115,7 +115,8 @@ resolve_version() {
         echo "$VERSION"
         return
     fi
-    v=$(fetch "https://api.github.com/repos/$REPO/releases/latest" \
+    body=$(fetch "https://api.github.com/repos/$REPO/releases/latest" || true)
+    v=$(printf '%s\n' "$body" \
         | grep -m1 '"tag_name"' \
         | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
     if [ -n "$v" ]; then
