@@ -35,13 +35,19 @@ func Write(w io.Writer, opts Options) error {
 		losers = dedup.LoserSet(dedup.Find(keep))
 	}
 
+	var failed []string
 	for i, f := range keep {
 		if i > 0 {
 			fmt.Fprintln(w)
 		}
 		if err := writeFile(w, f, opts, losers); err != nil {
 			fmt.Fprintf(w, "# error reading %s: %v\n", f.Path, err)
+			failed = append(failed, f.Path)
 		}
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("output is incomplete, %d file(s) could not be read: %s",
+			len(failed), strings.Join(failed, ", "))
 	}
 	return nil
 }

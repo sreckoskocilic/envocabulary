@@ -179,3 +179,40 @@ func TestWrite_DiscoverError(t *testing.T) {
 		t.Errorf("expected mock error; got %v", err)
 	}
 }
+
+func TestWrite_UnreadableFileReturnsError(t *testing.T) {
+	home := t.TempDir()
+	if err := os.WriteFile(filepath.Join(home, ".zshrc"), []byte("export A=1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	locked := filepath.Join(home, ".zshrc.locked")
+	if err := os.WriteFile(locked, []byte("export B=2\n"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o600) })
+	if f, err := os.Open(locked); err == nil {
+		f.Close()
+		t.Skip("file permissions are not enforced for this user")
+	}
+
+	orig := inventory.Discover
+	inventory.Discover = func() ([]inventory.File, error) {
+		return []inventory.File{
+			{Path: filepath.Join(home, ".zshrc"), Role: inventory.RoleCanonicalZsh},
+			{Path: locked, Role: inventory.RoleOrphan},
+		}, nil
+	}
+	t.Cleanup(func() { inventory.Discover = orig })
+
+	var buf bytes.Buffer
+	err := Write(&buf, Options{IncludeOrphans: true})
+	if err == nil {
+		t.Fatal("expected an error when a file cannot be read")
+	}
+	if !strings.Contains(err.Error(), "incomplete") {
+		t.Errorf("error should say the output is incomplete, got %v", err)
+	}
+	if !strings.Contains(buf.String(), "export A=1") {
+		t.Errorf("readable files must still be emitted")
+	}
+}

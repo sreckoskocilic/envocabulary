@@ -273,6 +273,57 @@ func TestAttribute_DuplicateEntriesInCurrentValue(t *testing.T) {
 	}
 }
 
+func TestAttribute_NestedTraceMarkerIgnored(t *testing.T) {
+	trace := []model.TraceEntry{
+		{Name: "PATH", File: "/u/.zshrc", Line: 63, Raw: "export PATH=/u/go/bin:/usr/bin"},
+		{Name: "PATH", File: "/u/nvm.sh", Line: 904, Raw: "PATH=+/u/nvm.sh:904> nvm_change_path /u/go/bin:/usr/bin"},
+		{Name: "PATH", File: "/u/nvm.sh", Line: 904, Raw: "PATH=/u/node/bin:/u/go/bin:/usr/bin"},
+	}
+	r := Attribute("PATH", "/u/node/bin:/u/go/bin:/usr/bin", "/usr/bin", trace)
+	if len(r.Entries) != 3 {
+		t.Fatalf("got %d entries, want 3", len(r.Entries))
+	}
+	if r.Entries[0].File != "/u/nvm.sh" || r.Entries[0].Line != 904 {
+		t.Errorf("/u/node/bin: got %s:%d, want /u/nvm.sh:904", r.Entries[0].File, r.Entries[0].Line)
+	}
+	if r.Entries[1].File != "/u/.zshrc" || r.Entries[1].Line != 63 {
+		t.Errorf("/u/go/bin: got %s:%d, want /u/.zshrc:63", r.Entries[1].File, r.Entries[1].Line)
+	}
+	if r.Entries[2].File != "" {
+		t.Errorf("/usr/bin predates the chain, got %s:%d", r.Entries[2].File, r.Entries[2].Line)
+	}
+}
+
+func TestAttribute_RepeatedPrependGetsOwnWriter(t *testing.T) {
+	trace := []model.TraceEntry{
+		{Name: "PATH", File: "/u/.zshrc", Line: 22, Raw: "export PATH=/u/.local/bin:/usr/bin"},
+		{Name: "PATH", File: "/u/.zshrc", Line: 25, Raw: "export PATH=/u/.cargo/bin:/u/.local/bin:/usr/bin"},
+		{Name: "PATH", File: "/u/.zshrc", Line: 70, Raw: "export PATH=/u/.local/bin:/u/.cargo/bin:/u/.local/bin:/usr/bin"},
+	}
+	r := Attribute("PATH", "/u/.local/bin:/u/.cargo/bin:/u/.local/bin:/usr/bin", "/usr/bin", trace)
+	if len(r.Entries) != 4 {
+		t.Fatalf("got %d entries, want 4", len(r.Entries))
+	}
+	if r.Entries[0].Line != 70 {
+		t.Errorf("leading /u/.local/bin was re-added at line 70, got line %d", r.Entries[0].Line)
+	}
+	if r.Entries[2].Line != 22 {
+		t.Errorf("trailing /u/.local/bin came from line 22, got line %d", r.Entries[2].Line)
+	}
+}
+
+func TestAlignGreedyFallback(t *testing.T) {
+	a := []string{"/a", "/b", "/c"}
+	b := []string{"/x", "/b", "/c", "/b"}
+	match := alignGreedy(a, b, []int{-1, -1, -1, -1})
+	want := []int{-1, 1, 2, -1}
+	for i := range want {
+		if match[i] != want[i] {
+			t.Errorf("match[%d] = %d, want %d", i, match[i], want[i])
+		}
+	}
+}
+
 func TestCheckExists(t *testing.T) {
 	existing := map[string]bool{"/usr/bin": true, "/opt/dead": false}
 	orig := statDir

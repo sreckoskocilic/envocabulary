@@ -359,3 +359,47 @@ func TestEmitJSON_ChainIncluded(t *testing.T) {
 		t.Errorf("expected chain in JSON; got:\n%s", buf.String())
 	}
 }
+
+func TestEmitText_CollapsesRepeatedWriter(t *testing.T) {
+	e := model.TraceEntry{Name: "EDITOR", File: "/u/.zprofile", Line: 1, Raw: "export EDITOR=nano"}
+	r := Result{
+		Name:    "EDITOR",
+		Present: true,
+		Value:   "nano",
+		Origin:  model.OriginShellFile,
+		Primary: "/u/.zprofile:1",
+		Writers: []model.TraceEntry{e, e},
+	}
+	var buf bytes.Buffer
+	EmitText(&buf, r, true, false)
+	out := buf.String()
+	if strings.Contains(out, "writers") {
+		t.Errorf("one file re-sourced twice is not two writers, got:\n%s", out)
+	}
+	if !strings.Contains(out, "raw      export EDITOR=nano") {
+		t.Errorf("a single distinct writer should render as raw, got:\n%s", out)
+	}
+}
+
+func TestEmitText_DistinctWritersStillListed(t *testing.T) {
+	r := Result{
+		Name:    "EDITOR",
+		Present: true,
+		Origin:  model.OriginShellFile,
+		Primary: "/u/.zshrc:9",
+		Writers: []model.TraceEntry{
+			{Name: "EDITOR", File: "/u/.zprofile", Line: 1, Raw: "export EDITOR=nano"},
+			{Name: "EDITOR", File: "/u/.zprofile", Line: 1, Raw: "export EDITOR=nano"},
+			{Name: "EDITOR", File: "/u/.zshrc", Line: 9, Raw: "export EDITOR=vim"},
+		},
+	}
+	var buf bytes.Buffer
+	EmitText(&buf, r, false, false)
+	out := buf.String()
+	if !strings.Contains(out, "/u/.zprofile:1  (×2)") {
+		t.Errorf("repeat count missing, got:\n%s", out)
+	}
+	if !strings.Contains(out, "/u/.zshrc:9  (winner)") {
+		t.Errorf("winner marker missing, got:\n%s", out)
+	}
+}

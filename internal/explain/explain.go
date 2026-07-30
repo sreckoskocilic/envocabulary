@@ -81,10 +81,11 @@ func EmitText(w io.Writer, r Result, showValues, showChain bool) {
 		}
 	}
 
-	if len(r.Writers) > 1 {
-		emitWriters(w, r.Writers, showValues, showChain)
-	} else if len(r.Writers) == 1 && showValues {
-		fmt.Fprintf(w, "  raw      %s\n", r.Writers[0].Raw)
+	runs := collapseWriters(r.Writers)
+	if len(runs) > 1 {
+		emitWriters(w, runs, showValues, showChain)
+	} else if len(runs) == 1 && showValues {
+		fmt.Fprintf(w, "  raw      %s\n", runs[0].entry.Raw)
 	}
 
 	if r.Notes != "" {
@@ -98,21 +99,46 @@ func EmitText(w io.Writer, r Result, showValues, showChain bool) {
 	}
 }
 
-func emitWriters(w io.Writer, writers []model.TraceEntry, showValues, showChain bool) {
+type writerRun struct {
+	entry model.TraceEntry
+	times int
+}
+
+func collapseWriters(writers []model.TraceEntry) []writerRun {
+	var runs []writerRun
+	for _, e := range writers {
+		if n := len(runs); n > 0 {
+			p := runs[n-1].entry
+			if p.File == e.File && p.Line == e.Line && p.Raw == e.Raw {
+				runs[n-1].times++
+				continue
+			}
+		}
+		runs = append(runs, writerRun{entry: e, times: 1})
+	}
+	return runs
+}
+
+func emitWriters(w io.Writer, runs []writerRun, showValues, showChain bool) {
 	fmt.Fprintln(w, "  writers")
-	for i, e := range writers {
+	for i, r := range runs {
+		e := r.entry
 		marker := ""
-		if i == len(writers)-1 {
+		if i == len(runs)-1 {
 			marker = "  (winner)"
+		}
+		repeat := ""
+		if r.times > 1 {
+			repeat = fmt.Sprintf("  (×%d)", r.times)
 		}
 		chainInfo := ""
 		if showChain && len(e.Chain) > 0 {
 			chainInfo = fmt.Sprintf("  (via %s)", strings.Join(e.Chain, " → "))
 		}
 		if showValues {
-			fmt.Fprintf(w, "    %s:%d  %s%s%s\n", e.File, e.Line, e.Raw, marker, chainInfo)
+			fmt.Fprintf(w, "    %s:%d  %s%s%s%s\n", e.File, e.Line, e.Raw, repeat, marker, chainInfo)
 		} else {
-			fmt.Fprintf(w, "    %s:%d%s%s\n", e.File, e.Line, marker, chainInfo)
+			fmt.Fprintf(w, "    %s:%d%s%s%s\n", e.File, e.Line, repeat, marker, chainInfo)
 		}
 	}
 }

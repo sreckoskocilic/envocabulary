@@ -1506,3 +1506,46 @@ func TestRunExplain_JSONOutput(t *testing.T) {
 		t.Errorf("value should be omitted without --values; got %v", result)
 	}
 }
+
+func TestRunReport_HTMLDoesNotOverwriteExisting(t *testing.T) {
+	setupFakeShellHome(t, map[string]string{".zshrc": "export FOO=1\n"})
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	var stdout, stderr bytes.Buffer
+	if code := runReport([]string{"--html"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("first run: got %d, stderr=%q", code, stderr.String())
+	}
+	first := strings.TrimSpace(stdout.String())
+	if err := os.WriteFile(filepath.Join(dir, first), []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout.Reset()
+	if code := runReport([]string{"--html"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("second run: got %d, stderr=%q", code, stderr.String())
+	}
+	second := strings.TrimSpace(stdout.String())
+	if second == first {
+		t.Fatalf("second report reused the name %q and clobbered the first", first)
+	}
+
+	kept, err := os.ReadFile(filepath.Join(dir, first))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(kept) != "original" {
+		t.Errorf("the earlier report was overwritten")
+	}
+}
+
+func TestCreateUniqueReport_ExhaustedSuffixes(t *testing.T) {
+	orig := createReportFile
+	t.Cleanup(func() { createReportFile = orig })
+	createReportFile = func(string) (io.WriteCloser, error) {
+		return nil, os.ErrExist
+	}
+	if _, _, err := createUniqueReport("stamp"); err == nil {
+		t.Error("expected an error once every candidate name is taken")
+	}
+}

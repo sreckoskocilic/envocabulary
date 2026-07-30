@@ -2,6 +2,7 @@ package report
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -243,5 +244,40 @@ func TestTildePath(t *testing.T) {
 		if got := tildePath(tc.in, tc.home); got != tc.want {
 			t.Errorf("tildePath(%q, %q) = %q, want %q", tc.in, tc.home, got, tc.want)
 		}
+	}
+}
+
+func TestBuild_ReportsUnreadableFiles(t *testing.T) {
+	files := []inventory.File{
+		{Path: "/home/u/.zshrc", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{
+			{Kind: inventory.KindExport, Name: "EDITOR", Line: 1, Value: "vim"},
+		}},
+		{Path: "/home/u/.zshrc.backup", Role: inventory.RoleOrphan, Err: errors.New("bufio.Scanner: token too long")},
+	}
+	r := Build(files)
+	if len(r.Unreadable) != 1 {
+		t.Fatalf("got %d unreadable, want 1", len(r.Unreadable))
+	}
+	if !strings.Contains(r.Unreadable[0].Path, ".zshrc.backup") {
+		t.Errorf("path = %q", r.Unreadable[0].Path)
+	}
+	if !strings.Contains(r.Unreadable[0].Reason, "token too long") {
+		t.Errorf("reason = %q", r.Unreadable[0].Reason)
+	}
+
+	var buf bytes.Buffer
+	if err := WriteText(&buf, r); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "UNREADABLE FILES (1)") {
+		t.Errorf("text report hides the unreadable file:\n%s", buf.String())
+	}
+
+	buf.Reset()
+	if err := WriteHTML(&buf, r); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "unreadable files") || !strings.Contains(buf.String(), "token too long") {
+		t.Errorf("html report hides the unreadable file")
 	}
 }

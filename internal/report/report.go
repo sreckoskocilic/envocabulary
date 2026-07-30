@@ -36,6 +36,11 @@ type OrphanFile struct {
 	Summary string
 }
 
+type UnreadableFile struct {
+	Path   string
+	Reason string
+}
+
 type Report struct {
 	Generated    time.Time
 	FilesScanned int
@@ -43,6 +48,7 @@ type Report struct {
 	Review       []Entry
 	Dangling     []Entry
 	Orphans      []OrphanFile
+	Unreadable   []UnreadableFile
 }
 
 func Build(files []inventory.File) Report {
@@ -50,6 +56,15 @@ func Build(files []inventory.File) Report {
 	r := Report{
 		Generated:    time.Now(),
 		FilesScanned: len(files),
+	}
+
+	for _, f := range files {
+		if f.Err != nil {
+			r.Unreadable = append(r.Unreadable, UnreadableFile{
+				Path:   tildePath(f.Path, home),
+				Reason: f.Err.Error(),
+			})
+		}
 	}
 
 	groups := dedup.Find(files)

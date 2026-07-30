@@ -250,6 +250,9 @@ func ParseReader(r io.Reader) ([]Item, error) {
 	for sc.Scan() {
 		lineNo++
 		line := sc.Text()
+		if lineNo == 1 {
+			line = strings.TrimPrefix(line, "\ufeff")
+		}
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue

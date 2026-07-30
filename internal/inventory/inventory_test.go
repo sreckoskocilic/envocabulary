@@ -303,3 +303,26 @@ func TestHasOrphanPrefix(t *testing.T) {
 		})
 	}
 }
+
+func TestParseReader_StripsUTF8BOM(t *testing.T) {
+	items, err := ParseReader(strings.NewReader("\ufeffexport BOM_VAR=1\nexport SECOND=2\n"))
+	if err != nil {
+		t.Fatalf("ParseReader: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("got %d items, want 2: %+v", len(items), items)
+	}
+	if items[0].Name != "BOM_VAR" || items[0].Value != "1" {
+		t.Errorf("got %+v, want BOM_VAR=1", items[0])
+	}
+}
+
+func TestParseReader_BOMOnlyStrippedFromFirstLine(t *testing.T) {
+	items, err := ParseReader(strings.NewReader("export A=1\n\ufeffexport B=2\n"))
+	if err != nil {
+		t.Fatalf("ParseReader: %v", err)
+	}
+	if len(items) != 1 || items[0].Name != "A" {
+		t.Errorf("a BOM mid-file is not a BOM; got %+v", items)
+	}
+}

@@ -40,6 +40,11 @@ func WriteText(w io.Writer, r Report) error {
 				fmt.Fprintf(tw, "%s\t%s\n", o.Path, o.Summary)
 			}
 		}},
+		{"UNREADABLE FILES", len(r.Unreadable), []string{"FILE", "REASON"}, func(tw *tabwriter.Writer) {
+			for _, u := range r.Unreadable {
+				fmt.Fprintf(tw, "%s\t%s\n", u.Path, u.Reason)
+			}
+		}},
 	}
 
 	for _, s := range sections {

@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -31,7 +32,24 @@ var (
 )
 
 var createReportFile = func(name string) (io.WriteCloser, error) {
-	return os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	return os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+}
+
+func createUniqueReport(base string) (string, io.WriteCloser, error) {
+	for i := 1; i <= 100; i++ {
+		name := base + ".html"
+		if i > 1 {
+			name = fmt.Sprintf("%s-%d.html", base, i)
+		}
+		f, err := createReportFile(name)
+		if err == nil {
+			return name, f, nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return "", nil, err
+		}
+	}
+	return "", nil, fmt.Errorf("%s.html and 99 numbered variants already exist", base)
 }
 
 var tracedStartup = capture.TracedStartupWith
@@ -301,6 +319,7 @@ func runDedup(args []string, stdout, stderr io.Writer) int {
 	slices.SortStableFunc(keep, func(a, b inventory.File) int {
 		return cmp.Compare(inventory.FileRank(a), inventory.FileRank(b))
 	})
+	warnUnreadable(stderr, keep)
 
 	groups := dedup.Find(keep)
 	if len(groups) == 0 {
@@ -344,6 +363,7 @@ func runDangling(args []string, stdout, stderr io.Writer) int {
 		return die(stderr, err)
 	}
 	keep := inventory.FilterFiles(files, *bash, *orphans)
+	warnUnreadable(stderr, keep)
 
 	findings := dangling.Find(keep)
 	if len(findings) == 0 {
@@ -403,6 +423,7 @@ func runLost(args []string, stdout, stderr io.Writer) int {
 		return die(stderr, err)
 	}
 	keep := inventory.FilterFiles(files, *bash, true)
+	warnUnreadable(stderr, keep)
 
 	findings := lost.Find(keep)
 	if len(findings) == 0 {
@@ -599,6 +620,7 @@ safe-to-delete, review, dangling, orphaned files.
 
 Flags:
   --html   write HTML report to MM_DD_YYYY_HH_MM.html in current directory
+           (never overwrites: a taken name gets a -2, -3, ... suffix)
   --bash   include bash config files
 
 Examples:
@@ -626,12 +648,12 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 	slices.SortStableFunc(keep, func(a, b inventory.File) int {
 		return cmp.Compare(inventory.FileRank(a), inventory.FileRank(b))
 	})
+	warnUnreadable(stderr, keep)
 
 	r := report.Build(keep)
 
 	if *htmlFlag {
-		name := r.Generated.Format("01_02_2006_15_04") + ".html"
-		f, err := createReportFile(name)
+		name, f, err := createUniqueReport(r.Generated.Format("01_02_2006_15_04"))
 		if err != nil {
 			return die(stderr, err)
 		}
@@ -654,6 +676,14 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 func die(stderr io.Writer, err error) int {
 	fmt.Fprintln(stderr, "error:", err)
 	return 1
+}
+
+func warnUnreadable(stderr io.Writer, files []inventory.File) {
+	for _, f := range files {
+		if f.Err != nil {
+			fmt.Fprintf(stderr, "warning: %s not parsed, results are incomplete: %v\n", f.Path, f.Err)
+		}
+	}
 }
 
 func runScan(args []string, stdout, stderr io.Writer) int {

@@ -171,6 +171,30 @@ var htmlTmpl = template.Must(template.New("report").Parse(`<!DOCTYPE html>
   </div>
 </section>
 
+<section id="unreadable">
+  <div class="section-header" onclick="this.parentElement.classList.toggle('collapsed')">
+    <h2>unreadable files</h2>
+    <span class="count">{{len .Unreadable}}</span>
+  </div>
+  <div class="section-body">
+{{- if .Unreadable}}
+    <table>
+      <thead><tr><th>file</th><th>reason</th></tr></thead>
+      <tbody>
+{{- range .Unreadable}}
+        <tr>
+          <td class="orphan-path">{{.Path}}</td>
+          <td class="orphan-detail">{{.Reason}}</td>
+        </tr>
+{{- end}}
+      </tbody>
+    </table>
+{{- else}}
+    <div class="empty">none</div>
+{{- end}}
+  </div>
+</section>
+
 </body>
 </html>
 `))
