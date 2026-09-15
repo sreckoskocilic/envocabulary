@@ -18,9 +18,24 @@ func TestParseReader(t *testing.T) {
 			[]Item{{Kind: KindExport, Name: "FOO", Line: 1, Value: "bar"}},
 		},
 		{
-			"export without value",
+			"export without value is not a definition",
 			`export FOO`,
+			nil,
+		},
+		{
+			"export with empty value",
+			`export FOO=`,
 			[]Item{{Kind: KindExport, Name: "FOO", Line: 1}},
+		},
+		{
+			"source target stops at semicolon",
+			`source ~/x.zsh; echo hi`,
+			[]Item{{Kind: KindSource, Name: "~/x.zsh", Line: 1}},
+		},
+		{
+			"source target stops at &&",
+			`. /u/x.sh&&echo hi`,
+			[]Item{{Kind: KindSource, Name: "/u/x.sh", Line: 1}},
 		},
 		{
 			"export with double-quoted value",

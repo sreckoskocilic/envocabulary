@@ -8,7 +8,7 @@ import (
 	"github.com/sreckoskocilic/envocabulary/internal/model"
 )
 
-var nestedTraceMarkerRe = regexp.MustCompile(`\+\S*:\d+>`)
+var nestedTraceMarkerRe = regexp.MustCompile(`\+.*?:\d+> `)
 
 type Entry struct {
 	Dir    string   `json:"dir"`
@@ -203,7 +203,7 @@ func splitPath(s string) []string {
 	parts := strings.Split(s, ":")
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
-		if p != "" {
+		if p = strings.TrimSpace(p); p != "" {
 			out = append(out, p)
 		}
 	}

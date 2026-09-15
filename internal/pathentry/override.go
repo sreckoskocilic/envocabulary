@@ -10,9 +10,13 @@ import (
 func OverrideFromConfig(results []VarBreakdown, files []inventory.File) {
 	pathsFiles := scanPathsD()
 	for i := range results {
+		name := results[i].Name
 		for j := range results[i].Entries {
 			e := &results[i].Entries[j] //nolint:gosec // index-based, no aliasing
-			if findConfigRef(e, results[i].Name, e.Dir, files) {
+			if e.File != "" && !strings.HasPrefix(e.File, "/etc/") {
+				continue
+			}
+			if findConfigRef(e, name, e.Dir, files) {
 				continue
 			}
 			findPathsDRef(e, e.Dir, pathsFiles)
@@ -23,6 +27,9 @@ func OverrideFromConfig(results []VarBreakdown, files []inventory.File) {
 func findConfigRef(entry *Entry, varName, dir string, files []inventory.File) bool {
 	found := false
 	for _, f := range files {
+		if f.Role == inventory.RoleOrphan {
+			continue
+		}
 		for _, item := range f.Items {
 			if (item.Kind == inventory.KindExport || item.Kind == inventory.KindAssign) &&
 				item.Name == varName &&

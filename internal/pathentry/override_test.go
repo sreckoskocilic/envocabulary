@@ -204,3 +204,40 @@ func TestOverrideFromConfig_FallsBackToPathsD(t *testing.T) {
 		t.Errorf("expected paths.d fallback; got %s", results[0].Entries[0].File)
 	}
 }
+
+func TestOverrideFromConfig_KeepsTraceAttributionToUserFile(t *testing.T) {
+	dead := false
+	results := []VarBreakdown{{
+		Name:    "PATH",
+		Entries: []Entry{{Dir: "/opt/dead", File: "/u/.zprofile", Line: 1, Exists: &dead}},
+	}}
+	files := []inventory.File{
+		{Path: "/u/.zshrc", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{
+			{Kind: inventory.KindExport, Name: "PATH", Line: 2, Value: "/opt/dead:$PATH"},
+		}},
+	}
+	OverrideFromConfig(results, files)
+	if results[0].Entries[0].File != "/u/.zprofile" || results[0].Entries[0].Line != 1 {
+		t.Errorf("trace attribution to a user file must survive; got %s:%d", results[0].Entries[0].File, results[0].Entries[0].Line)
+	}
+}
+
+func TestOverrideFromConfig_SkipsOrphans(t *testing.T) {
+	dead := false
+	results := []VarBreakdown{{
+		Name:    "PATH",
+		Entries: []Entry{{Dir: "/opt/dead", Exists: &dead}},
+	}}
+	files := []inventory.File{
+		{Path: "/u/.zshrc", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{
+			{Kind: inventory.KindExport, Name: "PATH", Line: 2, Value: "/opt/dead:$PATH"},
+		}},
+		{Path: "/u/.zshrc.bak", Role: inventory.RoleOrphan, Items: []inventory.Item{
+			{Kind: inventory.KindExport, Name: "PATH", Line: 9, Value: "/opt/dead:$PATH"},
+		}},
+	}
+	OverrideFromConfig(results, files)
+	if results[0].Entries[0].File != "/u/.zshrc" || results[0].Entries[0].Line != 2 {
+		t.Errorf("got %s:%d, want /u/.zshrc:2", results[0].Entries[0].File, results[0].Entries[0].Line)
+	}
+}

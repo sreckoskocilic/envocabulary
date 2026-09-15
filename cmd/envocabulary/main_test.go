@@ -373,7 +373,7 @@ func TestRunDedup_BashAndOrphansFlags(t *testing.T) {
 		".zshrc.backup": "export FOO=backup\n",
 	})
 	var stdout, stderr bytes.Buffer
-	code := runDedup([]string{"--bash", "--orphans"}, &stdout, &stderr)
+	code := runDedup([]string{"--bash"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("got %d", code)
 	}
@@ -1358,12 +1358,28 @@ func TestEmitPathText_DeadAnnotation(t *testing.T) {
 func TestRunPath_CheckUsesConfigOverride(t *testing.T) {
 	dead := "/tmp/envocabulary-nonexistent-" + t.Name()
 	stubCurrentEnv(t, map[string]string{"PATH": dead}, nil)
+	t.Setenv("SHELL", "/bin/zsh")
 	orig := inventory.Discover
 	t.Cleanup(func() { inventory.Discover = orig })
 	inventory.Discover = func() ([]inventory.File, error) {
 		return []inventory.File{
 			{
+				Path: "/u/.zshrc.bak",
+				Role: inventory.RoleOrphan,
+				Items: []inventory.Item{
+					{Kind: inventory.KindExport, Name: "PATH", Line: 1, Value: dead + ":$PATH"},
+				},
+			},
+			{
+				Path: "/u/.bashrc",
+				Role: inventory.RoleCanonicalBash,
+				Items: []inventory.Item{
+					{Kind: inventory.KindExport, Name: "PATH", Line: 2, Value: dead + ":$PATH"},
+				},
+			},
+			{
 				Path: "/u/.zshrc",
+				Role: inventory.RoleCanonicalZsh,
 				Items: []inventory.Item{
 					{Kind: inventory.KindExport, Name: "PATH", Line: 42, Value: dead + ":$PATH"},
 				},

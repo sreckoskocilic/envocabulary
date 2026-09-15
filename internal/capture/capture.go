@@ -56,7 +56,7 @@ func (t ZshTracer) RawTrace() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), traceTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "zsh", "-l", "-i", "-x", "-c", "exit")
-	cmd.Env = buildEnv("+%x:%i> ", t.BaselineLists)
+	cmd.Env = buildEnv("+%x:%I> %N> ", t.BaselineLists)
 	stderr := &boundedWriter{max: maxTraceBytes}
 	cmd.Stderr = stderr
 	cmd.WaitDelay = waitDelay
@@ -74,7 +74,7 @@ func (t BashTracer) RawTrace() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), traceTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "bash", "-l", "-i", "-x", "-c", "exit")
-	cmd.Env = buildEnv(`+${BASH_SOURCE}:${LINENO}> `, t.BaselineLists)
+	cmd.Env = buildEnv(`+${BASH_SOURCE}:${LINENO}> ${FUNCNAME:-}> `, t.BaselineLists)
 	stderr := &boundedWriter{max: maxTraceBytes}
 	cmd.Stderr = stderr
 	cmd.WaitDelay = waitDelay
@@ -182,9 +182,10 @@ func parseNullSeparated(b []byte) map[string]string {
 }
 
 var (
-	traceLineRe = regexp.MustCompile(`^(\++)(.+?):(\d+)> (.*)$`)
+	traceLineRe = regexp.MustCompile(`^(\++)(.+?):(\d+)> ([^>]*)> (.*)$`)
+	evalRe      = regexp.MustCompile(`^eval(?:\s|$)`)
 	assignRe    = regexp.MustCompile(`(?:^|\s)(?:export\s+|typeset(?:\s+-[a-zA-Z]+)*\s+|declare(?:\s+-[a-zA-Z]+)*\s+|local(?:\s+-[a-zA-Z]+)*\s+)?([A-Za-z_][A-Za-z0-9_]*)=`)
-	sourceRe    = regexp.MustCompile(`^(?:source|\.)\s+(\S+)`)
+	sourceRe    = regexp.MustCompile(`^(?:source|\.)\s+([^\s;&|]+)`)
 )
 
 func sourceTargets(target, file string) bool {
@@ -201,17 +202,19 @@ func parseTrace(s string) []model.TraceEntry {
 	var stack []string
 	currentFile := ""
 	pendingSource := ""
+	evals := evalLines{}
 
 	for _, line := range lines {
 		m := traceLineRe.FindStringSubmatch(line)
 		if m == nil {
 			continue
 		}
-		file, lineStr, rest := m[2], m[3], m[4]
+		file, lineStr, ctx, rest := m[2], m[3], m[4], m[5]
 		ln, _ := strconv.Atoi(lineStr)
+		ln, isEval := evals.resolve(file, ctx, rest, ln)
 
 		if file != currentFile {
-			if pendingSource != "" && !strings.HasPrefix(file, "(") && sourceTargets(pendingSource, file) {
+			if pendingSource != "" && sourceTargets(pendingSource, file) {
 				if idx := fileIndex(stack, file); idx >= 0 {
 					stack = stack[:idx+1]
 				} else {
@@ -231,6 +234,9 @@ func parseTrace(s string) []model.TraceEntry {
 			pendingSource = ""
 		}
 
+		if isEval {
+			continue
+		}
 		am := assignRe.FindStringSubmatch(rest)
 		if am == nil {
 			continue
@@ -243,6 +249,21 @@ func parseTrace(s string) []model.TraceEntry {
 		entries = append(entries, entry)
 	}
 	return entries
+}
+
+type evalLines map[string]int
+
+func (e evalLines) resolve(file, ctx, rest string, ln int) (int, bool) {
+	if ctx == "(eval)" {
+		if l, ok := e[file]; ok {
+			ln = l
+		}
+	}
+	isEval := evalRe.MatchString(rest)
+	if isEval {
+		e[file] = ln
+	}
+	return ln, isEval
 }
 
 func fileIndex(stack []string, file string) int {

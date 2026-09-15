@@ -120,7 +120,7 @@ Static-file:
   catalog [--orphans] [--bash] [-n] [--dedup]
       Prints entire shell configuration by merging all its config files.
 
-  dedup [--orphans] [--bash]
+  dedup [--bash]
       Cross-file duplicate report for exports, assigns, aliases, functions.
 
   dangling [--orphans] [--bash]
@@ -209,7 +209,7 @@ Usage:
 Prints your zsh config files (.zshenv, .zprofile, .zshrc, .zlogin, .zlogout)
 
 Flags:
-  --orphans       also include backup/variant files (.zshrc.backup, .bashrc.old, ...)
+  --orphans       also include zsh backup/variant files (.zshrc.backup, ...); with --bash, bash variants too. Never annotated by --dedup
   --bash          also include .bashrc / .bash_profile / .profile
   -n              prefix each line with its source line number
   --dedup         comment out lines overridden by a later writer,
@@ -241,18 +241,22 @@ Examples:
 }
 
 func helpDedup(w io.Writer) {
-	fmt.Fprint(w, `envocabulary dedup — cross-file duplicate report for exports, assigns, aliases, functions
+	fmt.Fprint(w, `envocabulary dedup — duplicate report for exports, assigns, aliases, functions
 
 Usage:
-  envocabulary dedup [--orphans] [--bash]
+  envocabulary dedup [--bash]
+
+Groups definitions of the same name within and across the config files the
+shell actually reads; the last one in login order wins. Backup/variant files
+are never grouped (they are not executed), see lost for those. .zlogout is
+skipped for the same reason.
 
 Flags:
-  --orphans  include orphan/backup files in the search
   --bash     include bash config files
 
 Examples:
   envocabulary dedup
-  envocabulary dedup --bash --orphans
+  envocabulary dedup --bash
 `)
 }
 
@@ -305,7 +309,6 @@ func runDedup(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("dedup", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() { helpDedup(stdout) }
-	orphans := fs.Bool("orphans", false, "include orphan/backup files")
 	bash := fs.Bool("bash", false, "include bash config files")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -315,7 +318,7 @@ func runDedup(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return die(stderr, err)
 	}
-	keep := inventory.FilterFiles(files, *bash, *orphans)
+	keep := inventory.FilterFiles(files, *bash, false)
 	slices.SortStableFunc(keep, func(a, b inventory.File) int {
 		return cmp.Compare(inventory.FileRank(a), inventory.FileRank(b))
 	})
@@ -834,7 +837,11 @@ func runPath(args []string, stdout, stderr io.Writer) int {
 			return 0
 		}
 		if files, err := inventory.Discover(); err == nil {
-			pathentry.OverrideFromConfig(filtered, files)
+			shell := *shellFlag
+			if shell == "" {
+				shell = capture.DetectShell()
+			}
+			pathentry.OverrideFromConfig(filtered, inventory.FilterFiles(files, shell == "bash", false))
 		}
 		if code := emitPath(stdout, stderr, filtered, *jsonOut, *showChain); code != 0 {
 			return code

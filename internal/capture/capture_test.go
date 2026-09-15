@@ -46,37 +46,37 @@ func TestParseTrace(t *testing.T) {
 	}{
 		{
 			"export assignment",
-			"+/u/foo/.zshrc:3> export FOO=bar\n",
+			"+/u/foo/.zshrc:3> > export FOO=bar\n",
 			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 3, Name: "FOO", Raw: "export FOO=bar"}},
 		},
 		{
 			"bare assignment",
-			"+/u/foo/.zshrc:5> FOO=bar\n",
+			"+/u/foo/.zshrc:5> > FOO=bar\n",
 			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 5, Name: "FOO", Raw: "FOO=bar"}},
 		},
 		{
 			"typeset with combined flags",
-			"+/u/foo/.zshrc:8> typeset -gx FOO=bar\n",
+			"+/u/foo/.zshrc:8> > typeset -gx FOO=bar\n",
 			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 8, Name: "FOO", Raw: "typeset -gx FOO=bar"}},
 		},
 		{
 			"typeset with separate flags",
-			"+/u/foo/.zshrc:9> typeset -g -x FOO=bar\n",
+			"+/u/foo/.zshrc:9> > typeset -g -x FOO=bar\n",
 			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 9, Name: "FOO", Raw: "typeset -g -x FOO=bar"}},
 		},
 		{
 			"declare with no flags",
-			"+/u/foo/.zshrc:10> declare FOO=bar\n",
+			"+/u/foo/.zshrc:10> > declare FOO=bar\n",
 			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 10, Name: "FOO", Raw: "declare FOO=bar"}},
 		},
 		{
 			"local with flag",
-			"+/u/foo/.zshrc:11> local -r FOO=bar\n",
+			"+/u/foo/.zshrc:11> > local -r FOO=bar\n",
 			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 11, Name: "FOO", Raw: "local -r FOO=bar"}},
 		},
 		{
 			"all writers preserved in order",
-			"+/u/foo/.zprofile:1> FOO=first\n+/u/foo/.zshrc:20> FOO=second\n",
+			"+/u/foo/.zprofile:1> > FOO=first\n+/u/foo/.zshrc:20> > FOO=second\n",
 			[]model.TraceEntry{
 				{File: "/u/foo/.zprofile", Line: 1, Name: "FOO", Raw: "FOO=first"},
 				{File: "/u/foo/.zshrc", Line: 20, Name: "FOO", Raw: "FOO=second"},
@@ -84,32 +84,32 @@ func TestParseTrace(t *testing.T) {
 		},
 		{
 			"nested context double plus",
-			"++/u/foo/.zshrc:15> FOO=bar\n",
+			"++/u/foo/.zshrc:15> > FOO=bar\n",
 			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 15, Name: "FOO", Raw: "FOO=bar"}},
 		},
 		{
 			"deeply nested context",
-			"++++/u/foo/helpers.zsh:4> FOO=bar\n",
+			"++++/u/foo/helpers.zsh:4> > FOO=bar\n",
 			[]model.TraceEntry{{File: "/u/foo/helpers.zsh", Line: 4, Name: "FOO", Raw: "FOO=bar"}},
 		},
 		{
 			"non-assignment line ignored",
-			"+/u/foo/.zshrc:30> echo hello\n",
+			"+/u/foo/.zshrc:30> > echo hello\n",
 			nil,
 		},
 		{
 			"value contains equals signs",
-			"+/u/foo/.zshrc:31> FOO=a=b=c\n",
+			"+/u/foo/.zshrc:31> > FOO=a=b=c\n",
 			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 31, Name: "FOO", Raw: "FOO=a=b=c"}},
 		},
 		{
 			"non-trace lines in stream are ignored",
-			"noise line\n+/u/foo/.zshrc:40> FOO=bar\nmore noise\n",
+			"noise line\n+/u/foo/.zshrc:40> > FOO=bar\nmore noise\n",
 			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 40, Name: "FOO", Raw: "FOO=bar"}},
 		},
 		{
 			"multiple vars in one line captures only first (known limitation)",
-			"+/u/foo/.zshrc:50> export A=1 B=2\n",
+			"+/u/foo/.zshrc:50> > export A=1 B=2\n",
 			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 50, Name: "A", Raw: "export A=1 B=2"}},
 		},
 		{
@@ -119,21 +119,21 @@ func TestParseTrace(t *testing.T) {
 		},
 		{
 			"chain from sourced file",
-			"+/u/.zshrc:5> source helpers.sh\n++/u/helpers.sh:3> export FOO=bar\n",
+			"+/u/.zshrc:5> > source helpers.sh\n++/u/helpers.sh:3> > export FOO=bar\n",
 			[]model.TraceEntry{
 				{File: "/u/helpers.sh", Line: 3, Name: "FOO", Raw: "export FOO=bar", Chain: []string{"/u/.zshrc"}},
 			},
 		},
 		{
 			"deep chain from doubly-sourced file",
-			"+/u/.zshrc:1> source a.sh\n++/u/a.sh:1> source b.sh\n+++/u/b.sh:2> export X=1\n",
+			"+/u/.zshrc:1> > source a.sh\n++/u/a.sh:1> > source b.sh\n+++/u/b.sh:2> > export X=1\n",
 			[]model.TraceEntry{
 				{File: "/u/b.sh", Line: 2, Name: "X", Raw: "export X=1", Chain: []string{"/u/.zshrc", "/u/a.sh"}},
 			},
 		},
 		{
 			"chain resets for new top-level file",
-			"+/u/.zprofile:1> export A=1\n+/u/.zshrc:1> source h.sh\n++/u/h.sh:1> export B=2\n",
+			"+/u/.zprofile:1> > export A=1\n+/u/.zshrc:1> > source h.sh\n++/u/h.sh:1> > export B=2\n",
 			[]model.TraceEntry{
 				{File: "/u/.zprofile", Line: 1, Name: "A", Raw: "export A=1"},
 				{File: "/u/h.sh", Line: 1, Name: "B", Raw: "export B=2", Chain: []string{"/u/.zshrc"}},
@@ -141,14 +141,14 @@ func TestParseTrace(t *testing.T) {
 		},
 		{
 			"chain from sourced file at same depth",
-			"+/u/.zshrc:5> . helpers.sh\n+/u/helpers.sh:3> export FOO=bar\n",
+			"+/u/.zshrc:5> > . helpers.sh\n+/u/helpers.sh:3> > export FOO=bar\n",
 			[]model.TraceEntry{
 				{File: "/u/helpers.sh", Line: 3, Name: "FOO", Raw: "export FOO=bar", Chain: []string{"/u/.zshrc"}},
 			},
 		},
 		{
 			"no chain for top-level assignments",
-			"+/u/.zshrc:1> export A=1\n+/u/.zprofile:5> export B=2\n",
+			"+/u/.zshrc:1> > export A=1\n+/u/.zprofile:5> > export B=2\n",
 			[]model.TraceEntry{
 				{File: "/u/.zshrc", Line: 1, Name: "A", Raw: "export A=1"},
 				{File: "/u/.zprofile", Line: 5, Name: "B", Raw: "export B=2"},
@@ -156,32 +156,65 @@ func TestParseTrace(t *testing.T) {
 		},
 		{
 			"chain pops correctly on return from source",
-			"+/u/.zshrc:1> source a.sh\n++/u/a.sh:1> export X=1\n+/u/.zshrc:2> export Y=2\n",
+			"+/u/.zshrc:1> > source a.sh\n++/u/a.sh:1> > export X=1\n+/u/.zshrc:2> > export Y=2\n",
 			[]model.TraceEntry{
 				{File: "/u/a.sh", Line: 1, Name: "X", Raw: "export X=1", Chain: []string{"/u/.zshrc"}},
 				{File: "/u/.zshrc", Line: 2, Name: "Y", Raw: "export Y=2"},
 			},
 		},
 		{
-			"pseudo-file after source not pushed to chain",
-			"+/u/.zshrc:1> source utils.sh\n++(anon):1> export A=1\n",
-			[]model.TraceEntry{
-				{File: "(anon)", Line: 1, Name: "A", Raw: "export A=1"},
-			},
-		},
-		{
-			"pseudo-file zsh after source not pushed to chain",
-			"+/u/.zshrc:1> source utils.sh\n++(zsh):5> export B=2\n",
-			[]model.TraceEntry{
-				{File: "(zsh)", Line: 5, Name: "B", Raw: "export B=2"},
-			},
-		},
-		{
 			"circular source chain breaks on re-entry",
-			"+/u/a.sh:1> source b.sh\n+/u/b.sh:1> source a.sh\n+/u/a.sh:2> export X=1\n",
+			"+/u/a.sh:1> > source b.sh\n+/u/b.sh:1> > source a.sh\n+/u/a.sh:2> > export X=1\n",
 			[]model.TraceEntry{
 				{File: "/u/a.sh", Line: 2, Name: "X", Raw: "export X=1"},
 			},
+		},
+		{
+			"function body keeps file-relative line and zsh context",
+			"+/u/nvm.sh:3969> nvm> export NVM_BIN=/u/bin\n",
+			[]model.TraceEntry{{File: "/u/nvm.sh", Line: 3969, Name: "NVM_BIN", Raw: "export NVM_BIN=/u/bin"}},
+		},
+		{
+			"eval body attributed to the eval line",
+			"+/u/.zprofile:6> /u/.zprofile> eval $'export A=1\\nexport B=2'\n+/u/.zprofile:7> (eval)> export A=1\n+/u/.zprofile:8> (eval)> export B=2\n+/u/.zprofile:9> /u/.zprofile> export C=3\n",
+			[]model.TraceEntry{
+				{File: "/u/.zprofile", Line: 6, Name: "A", Raw: "export A=1"},
+				{File: "/u/.zprofile", Line: 6, Name: "B", Raw: "export B=2"},
+				{File: "/u/.zprofile", Line: 9, Name: "C", Raw: "export C=3"},
+			},
+		},
+		{
+			"nested eval stays on the outer eval line",
+			"+/u/.zshrc:4> /u/.zshrc> eval 'eval export A=1'\n+/u/.zshrc:5> (eval)> eval export A=1\n+/u/.zshrc:6> (eval)> export A=1\n",
+			[]model.TraceEntry{{File: "/u/.zshrc", Line: 4, Name: "A", Raw: "export A=1"}},
+		},
+		{
+			"eval context without a recorded eval keeps its line",
+			"+/u/.zshrc:12> (eval)> export A=1\n",
+			[]model.TraceEntry{{File: "/u/.zshrc", Line: 12, Name: "A", Raw: "export A=1"}},
+		},
+		{
+			"eval line is tracked per file",
+			"+/u/.zprofile:6> /u/.zprofile> eval x\n+/u/.zshrc:2> /u/.zshrc> eval y\n+/u/.zprofile:7> (eval)> export A=1\n",
+			[]model.TraceEntry{{File: "/u/.zprofile", Line: 6, Name: "A", Raw: "export A=1"}},
+		},
+		{
+			"source target stops at semicolon so chain still builds",
+			"+/u/.zshrc:1> > source helpers.sh; echo hi\n++/u/helpers.sh:3> > export FOO=bar\n",
+			[]model.TraceEntry{{File: "/u/helpers.sh", Line: 3, Name: "FOO", Raw: "export FOO=bar", Chain: []string{"/u/.zshrc"}}},
+		},
+		{
+			"bash format with empty function context",
+			"+/u/.bashrc:3> > export A=1\n+/u/.bashrc:1> setup> export B=2\n",
+			[]model.TraceEntry{
+				{File: "/u/.bashrc", Line: 3, Name: "A", Raw: "export A=1"},
+				{File: "/u/.bashrc", Line: 1, Name: "B", Raw: "export B=2"},
+			},
+		},
+		{
+			"old two-field format is not parsed",
+			"+/u/.zshrc:3> export A=1\n",
+			nil,
 		},
 	}
 	for _, tc := range tests {
@@ -195,8 +228,8 @@ func TestParseTrace(t *testing.T) {
 }
 
 func TestParseTrace_EmptySourceDoesNotFabricateChain(t *testing.T) {
-	in := "+/u/.zshenv:9> source /u/empty.zsh\n" +
-		"+/u/.zprofile:1> export A=1\n"
+	in := "+/u/.zshenv:9> > source /u/empty.zsh\n" +
+		"+/u/.zprofile:1> > export A=1\n"
 	got := parseTrace(in)
 	if len(got) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(got))
@@ -207,8 +240,8 @@ func TestParseTrace_EmptySourceDoesNotFabricateChain(t *testing.T) {
 }
 
 func TestParseTrace_RealSourceStillBuildsChain(t *testing.T) {
-	in := "+/u/.zshrc:9> source /u/helpers.zsh\n" +
-		"+/u/helpers.zsh:2> export A=1\n"
+	in := "+/u/.zshrc:9> > source /u/helpers.zsh\n" +
+		"+/u/helpers.zsh:2> > export A=1\n"
 	got := parseTrace(in)
 	if len(got) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(got))

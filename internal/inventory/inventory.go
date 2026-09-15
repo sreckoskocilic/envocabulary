@@ -142,12 +142,12 @@ func parseFile(path string, role Role) File {
 }
 
 var (
-	exportRe    = regexp.MustCompile(`^\s*export\s+([A-Za-z_][A-Za-z0-9_]*)(?:=(.*))?$`)
+	exportRe    = regexp.MustCompile(`^\s*export\s+([A-Za-z_][A-Za-z0-9_]*)=(.*)$`)
 	assignRe    = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_]*)=(.*)$`)
 	aliasRe     = regexp.MustCompile(`^\s*alias\s+(?:-[a-zA-Z]+\s+)*([A-Za-z_][A-Za-z0-9_.-]*)=(.*)$`)
 	funcKwRe    = regexp.MustCompile(`^\s*function\s+([A-Za-z_][A-Za-z0-9_.-]*)`)
 	funcParenRe = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_.-]*)\s*\(\s*\)`)
-	sourceRe    = regexp.MustCompile(`^\s*(?:source|\.)\s+("[^"]*"|'[^']*'|\S+)`)
+	sourceRe    = regexp.MustCompile(`^\s*(?:source|\.)\s+("[^"]*"|'[^']*'|[^\s;&|]+)`)
 )
 
 var reservedFuncNames = map[string]bool{

@@ -161,3 +161,35 @@ func TestLoserSet(t *testing.T) {
 		t.Errorf("expected /a:20 in loser set")
 	}
 }
+
+func TestFindExcludesZlogout(t *testing.T) {
+	files := []inventory.File{
+		{Path: "/z/.zshrc", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{
+			{Kind: inventory.KindExport, Name: "EDITOR", Line: 1, Value: "vim"},
+		}},
+		{Path: "/z/.zlogout", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{
+			{Kind: inventory.KindExport, Name: "EDITOR", Line: 1, Value: "nano"},
+		}},
+	}
+	if groups := Find(files); len(groups) != 0 {
+		t.Errorf(".zlogout runs at logout and must not win or lose; got %+v", groups)
+	}
+}
+
+func TestFindGroupsExportWithAssign(t *testing.T) {
+	files := []inventory.File{
+		{Path: "/z/.zshenv", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{
+			{Kind: inventory.KindExport, Name: "LESS", Line: 1, Value: "-R"},
+		}},
+		{Path: "/z/.zshrc", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{
+			{Kind: inventory.KindAssign, Name: "LESS", Line: 4, Value: "-X"},
+		}},
+	}
+	groups := Find(files)
+	if len(groups) != 1 {
+		t.Fatalf("export LESS and LESS= are the same variable; got %+v", groups)
+	}
+	if groups[0].Winner.Line != 4 || groups[0].Winner.Kind != inventory.KindAssign {
+		t.Errorf("winner got %+v, want .zshrc:4 assign", groups[0].Winner)
+	}
+}

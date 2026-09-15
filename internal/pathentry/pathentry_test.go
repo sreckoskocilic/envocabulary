@@ -352,3 +352,35 @@ func TestCheckExists(t *testing.T) {
 func TestCheckExists_Empty(t *testing.T) {
 	CheckExists(nil)
 }
+
+func TestAttribute_BareAssignmentTrailingSpace(t *testing.T) {
+	trace := []model.TraceEntry{
+		{Name: "PATH", File: "/u/.zprofile", Line: 1, Raw: "PATH=/usr/bin:/u/bare "},
+		{Name: "PATH", File: "/u/.zshrc", Line: 2, Raw: "export PATH=/usr/bin:/u/bare:/u/exported"},
+	}
+	r := Attribute("PATH", "/usr/bin:/u/bare:/u/exported", "/usr/bin", trace)
+	if len(r.Entries) != 3 {
+		t.Fatalf("got %d entries, want 3", len(r.Entries))
+	}
+	if r.Entries[1].File != "/u/.zprofile" || r.Entries[1].Line != 1 {
+		t.Errorf("/u/bare: got %s:%d, want /u/.zprofile:1", r.Entries[1].File, r.Entries[1].Line)
+	}
+	if r.Entries[2].File != "/u/.zshrc" || r.Entries[2].Line != 2 {
+		t.Errorf("/u/exported: got %s:%d, want /u/.zshrc:2", r.Entries[2].File, r.Entries[2].Line)
+	}
+}
+
+func TestAttribute_NestedTraceMarkerWithSpacesInPath(t *testing.T) {
+	trace := []model.TraceEntry{
+		{Name: "PATH", File: "/u/.zshrc", Line: 63, Raw: "export PATH=/u/go/bin:/usr/bin"},
+		{Name: "PATH", File: "/u/My Configs/nvm.sh", Line: 3957, Raw: "PATH=+/u/My Configs/nvm.sh:3957> nvm_change_path> nvm_change_path /u/go/bin:/usr/bin"},
+		{Name: "PATH", File: "/u/My Configs/nvm.sh", Line: 3957, Raw: "PATH=/u/node/bin:/u/go/bin:/usr/bin"},
+	}
+	r := Attribute("PATH", "/u/node/bin:/u/go/bin:/usr/bin", "/usr/bin", trace)
+	if len(r.Entries) != 3 {
+		t.Fatalf("got %d entries, want 3", len(r.Entries))
+	}
+	if r.Entries[1].File != "/u/.zshrc" || r.Entries[1].Line != 63 {
+		t.Errorf("/u/go/bin: got %s:%d, want /u/.zshrc:63", r.Entries[1].File, r.Entries[1].Line)
+	}
+}

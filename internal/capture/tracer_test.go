@@ -2,6 +2,9 @@ package capture
 
 import (
 	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -20,9 +23,9 @@ func (f fakeTracer) RawTrace() (string, error) {
 
 func TestTracedStartupWith_ParsesOutput(t *testing.T) {
 	raw := strings.Join([]string{
-		"+/u/.zprofile:5> export EDITOR=vim",
-		"+/u/.zshrc:12> FOO=bar",
-		"+/u/.zshrc:20> export EDITOR=nvim",
+		"+/u/.zprofile:5> > export EDITOR=vim",
+		"+/u/.zshrc:12> > FOO=bar",
+		"+/u/.zshrc:20> > export EDITOR=nvim",
 		"some non-trace noise",
 		"",
 	}, "\n")
@@ -78,15 +81,15 @@ func TestEnvWithPS4_InjectsPS4ZshFormat(t *testing.T) {
 	t.Setenv("PS4", "OLD")
 	t.Setenv("FOO_TEST_VAR", "marker")
 
-	got := envWithPS4("+%x:%i> ")
+	got := envWithPS4("+%x:%I> ")
 
 	var ps4Count, fooCount int
 	for _, kv := range got {
 		switch {
 		case strings.HasPrefix(kv, "PS4="):
 			ps4Count++
-			if kv != "PS4=+%x:%i> " {
-				t.Errorf("PS4 = %q, want %q", kv, "PS4=+%x:%i> ")
+			if kv != "PS4=+%x:%I> " {
+				t.Errorf("PS4 = %q, want %q", kv, "PS4=+%x:%I> ")
 			}
 		case strings.HasPrefix(kv, "FOO_TEST_VAR="):
 			fooCount++
@@ -255,7 +258,7 @@ func TestTracerForShell_UnknownErrors(t *testing.T) {
 }
 
 func TestTracedStartupWith_TypeIntegrity(t *testing.T) {
-	raw := "+/x:1> export FOO=bar"
+	raw := "+/x:1> > export FOO=bar"
 	got, err := TracedStartupWith(fakeTracer{output: raw})
 	if err != nil {
 		t.Fatal(err)
@@ -364,5 +367,35 @@ func TestSourceTargets(t *testing.T) {
 		if got := sourceTargets(tc.target, tc.file); got != tc.want {
 			t.Errorf("sourceTargets(%q, %q) = %v, want %v", tc.target, tc.file, got, tc.want)
 		}
+	}
+}
+
+func TestZshTracer_FunctionAndEvalLinesAreFileRelative(t *testing.T) {
+	if _, err := exec.LookPath("zsh"); err != nil {
+		t.Skip("zsh not installed")
+	}
+	dir := t.TempDir()
+	rc := "# header\nsetvar() {\n  export FN_LINE_VAR=1\n}\nsetvar\neval 'export EVAL_LINE_A=1\nexport EVAL_LINE_B=2'\n"
+	if err := os.WriteFile(filepath.Join(dir, ".zshrc"), []byte(rc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ZDOTDIR", dir)
+	t.Setenv("HOME", dir)
+
+	out, err := ZshTracer{}.RawTrace()
+	if err != nil {
+		t.Fatalf("RawTrace: %v", err)
+	}
+	want := map[string]int{"FN_LINE_VAR": 3, "EVAL_LINE_A": 6, "EVAL_LINE_B": 6}
+	for _, e := range parseTrace(out) {
+		if w, ok := want[e.Name]; ok {
+			if e.Line != w {
+				t.Errorf("%s traced at line %d, want %d", e.Name, e.Line, w)
+			}
+			delete(want, e.Name)
+		}
+	}
+	if len(want) != 0 {
+		t.Fatalf("not found in trace: %v\n%s", want, out)
 	}
 }

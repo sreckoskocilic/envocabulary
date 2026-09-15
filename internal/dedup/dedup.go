@@ -2,6 +2,7 @@ package dedup
 
 import (
 	"cmp"
+	"path/filepath"
 	"slices"
 	"strconv"
 
@@ -40,7 +41,7 @@ func Find(files []inventory.File) []Group {
 	var entries []entry
 	rank := 0
 	for _, f := range files {
-		if f.Role == inventory.RoleOrphan {
+		if f.Role == inventory.RoleOrphan || filepath.Base(f.Path) == ".zlogout" {
 			continue
 		}
 		for _, it := range f.Items {
@@ -61,7 +62,7 @@ func Find(files []inventory.File) []Group {
 
 	buckets := map[string][]entry{}
 	for _, e := range entries {
-		key := string(e.shell) + "\x00" + string(e.occ.Kind) + "\x00" + e.occ.Name
+		key := string(e.shell) + "\x00" + string(groupKind(e.occ.Kind)) + "\x00" + e.occ.Name
 		buckets[key] = append(buckets[key], e)
 	}
 
@@ -106,4 +107,11 @@ func LoserSet(groups []Group) map[string]Occurrence {
 
 func Key(file string, line int) string {
 	return file + "\x00" + strconv.Itoa(line)
+}
+
+func groupKind(k inventory.Kind) inventory.Kind {
+	if k == inventory.KindAssign {
+		return inventory.KindExport
+	}
+	return k
 }

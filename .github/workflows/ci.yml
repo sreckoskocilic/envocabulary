@@ -26,7 +26,7 @@ jobs:
           go-version-file: go.mod
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.12.2
+          version: v2.13.2
 
   shellcheck:
     name: Shellcheck installer
@@ -51,13 +51,14 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Scan stdlib and module graph
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
   test:
     name: Test
     strategy:
       matrix:
         os: [macos-latest, ubuntu-latest]
+        go: [1.26.x, 1.27.x]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
@@ -66,7 +67,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version: ${{ matrix.go }}
       - name: Cross-compile FreeBSD
         if: matrix.os == 'ubuntu-latest'
         run: GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build ./...
@@ -83,6 +84,7 @@ jobs:
             exit 1
           fi
       - name: Upload coverage to Codecov
+        if: matrix.go == '1.27.x'
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: ./coverage.out

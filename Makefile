@@ -2,15 +2,13 @@
 
 GO              ?= go
 GOLANGCI_LINT   ?= golangci-lint
-GOFUMPT         ?= gofumpt
 COVERAGE_FILE   ?= coverage.out
 COVERAGE_MIN    ?= 95
 BINARY          ?= envocabulary
 PKGS            ?= ./...
 
-GOLANGCI_VERSION ?= v2.12.2
-GORELEASER_VERSION ?= v2.17.1
-GOFUMPT_VERSION ?= v0.9.1
+GOLANGCI_VERSION ?= v2.13.2
+GORELEASER_VERSION ?= v2.18.1
 
 all: lint cover build  ## Run lint, tests with the coverage gate, and build (default)
 
@@ -25,7 +23,7 @@ test-linux:  ## Run tests inside a Linux Docker container (requires Docker)
 		sh -c 'apt-get update -qq && apt-get install -y -qq zsh >/dev/null 2>&1 && go test -race ./...'
 
 cover:  ## Run tests with coverage
-	@$(GO) test -race -covermode=atomic -coverprofile=$(COVERAGE_FILE) $(PKGS) > /dev/null
+	@$(GO) test -race -covermode=atomic -coverprofile=$(COVERAGE_FILE) $(PKGS)
 	@cov=$$($(GO) tool cover -func=$(COVERAGE_FILE) | awk '/total:/ {gsub(/%/,"",$$3); print $$3}'); \
 		echo "Coverage: $$cov%"; \
 		echo ""; \
@@ -43,8 +41,8 @@ cover-html: cover  ## Generate HTML coverage report
 lint:  ## Run golangci-lint
 	$(GOLANGCI_LINT) run $(PKGS)
 
-fmt:  ## Format code with gofumpt
-	$(GOFUMPT) -w .
+fmt:  ## Format code with the formatters from .golangci.yml
+	$(GOLANGCI_LINT) fmt $(PKGS)
 
 tidy:  ## Tidy go.mod
 	$(GO) mod tidy
@@ -54,11 +52,10 @@ clean:  ## Remove build artifacts
 	rm -rf dist/
 
 release-snapshot:  ## Build a local snapshot release with goreleaser (requires goreleaser installed)
-	goreleaser release --snapshot --clean --skip=publish
+	goreleaser release --snapshot --clean --skip=sign
 
 install-tools:  ## Install dev tooling pinned to the versions CI uses
 	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
-	$(GO) install mvdan.cc/gofumpt@$(GOFUMPT_VERSION)
 	$(GO) install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 
 help:  ## Show this help

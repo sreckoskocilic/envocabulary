@@ -166,3 +166,17 @@ func TestFindSourceItems(t *testing.T) {
 		t.Errorf("expected ~/.oldstuff, got %s", findings[0].Name)
 	}
 }
+
+func TestFindTreatsExportAndAssignAsSameVariable(t *testing.T) {
+	files := []inventory.File{
+		{Path: "/z/.zshrc", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{
+			{Kind: inventory.KindAssign, Name: "GOPATH", Line: 1},
+		}},
+		{Path: "/z/.zshrc.bak", Role: inventory.RoleOrphan, Items: []inventory.Item{
+			{Kind: inventory.KindExport, Name: "GOPATH", Line: 2},
+		}},
+	}
+	if findings := Find(files); len(findings) != 0 {
+		t.Errorf("GOPATH exists in canonical as a bare assignment; got %+v", findings)
+	}
+}

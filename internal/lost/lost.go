@@ -50,5 +50,8 @@ func Find(files []inventory.File) []Finding {
 }
 
 func key(kind inventory.Kind, name string) string {
+	if kind == inventory.KindAssign {
+		kind = inventory.KindExport
+	}
 	return string(kind) + "\x00" + name
 }
