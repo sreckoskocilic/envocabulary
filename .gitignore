@@ -3,5 +3,4 @@
 *.log
 .DS_Store
 coverage.out
-coverage.gated.out
 coverage.html

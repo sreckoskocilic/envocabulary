@@ -2,6 +2,7 @@ package cleaner
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"regexp"
 	"strings"
@@ -23,10 +24,10 @@ var (
 	decorationRe   = regexp.MustCompile(`^[-=#*~_+/\\]+$`)
 
 	commentedExportRe    = regexp.MustCompile(`^export\s+[A-Za-z_][A-Za-z0-9_]*=`)
-	commentedAliasRe     = regexp.MustCompile(`^alias\s+`)
-	commentedFuncKwRe    = regexp.MustCompile(`^function\s+[A-Za-z_]`)
-	commentedFuncParenRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*\s*\(\s*\)`)
-	commentedSourceRe    = regexp.MustCompile(`^(?:source|\.)\s+(?:["'~$/]|\S*[/.])`)
+	commentedAliasRe     = regexp.MustCompile(`^alias\s+(?:-[A-Za-z]+\s+)*[^\s=]+=`)
+	commentedFuncKwRe    = regexp.MustCompile(`^function\s+[A-Za-z_][A-Za-z0-9_.-]*\s*(?:\(\s*\))?\s*(?:\{|$)`)
+	commentedFuncParenRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*\s*\(\s*\)\s*(?:\{|$)`)
+	commentedSourceRe    = regexp.MustCompile(`^(?:source|\.)\s+(\S+)\s*(?:[;#].*)?$`)
 	commentedAssignRe    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
 	commentedPluginsRe   = regexp.MustCompile(`^plugins\s*=\s*\(`)
 )
@@ -74,10 +75,7 @@ func Process(r io.Reader) ([]Decision, Stats, error) {
 		for j < len(lines) && info[j].isComment {
 			j++
 		}
-		keep := shouldKeepBlock(info[i:j])
-		for k := i; k < j; k++ {
-			keepMask[k] = keep
-		}
+		copy(keepMask[i:j], blockKeep(info[i:j]))
 		i = j
 	}
 
@@ -94,10 +92,17 @@ func Process(r io.Reader) ([]Decision, Stats, error) {
 	return decisions, stats, nil
 }
 
+const maxCleanBytes = 16 * 1024 * 1024
+
+var errTooLarge = errors.New("file larger than 16 MB")
+
 func Clean(r io.Reader) (string, Stats, error) {
-	raw, err := io.ReadAll(r)
+	raw, err := io.ReadAll(io.LimitReader(r, maxCleanBytes+1))
 	if err != nil {
 		return "", Stats{}, err
+	}
+	if len(raw) > maxCleanBytes {
+		return "", Stats{}, errTooLarge
 	}
 	if len(raw) == 0 {
 		return "", Stats{}, nil
@@ -124,28 +129,40 @@ func Clean(r io.Reader) (string, Stats, error) {
 	return joined, stats, nil
 }
 
-func shouldKeepBlock(block []lineInfo) bool {
-	if len(block) == 1 {
-		s := strings.TrimSpace(block[0].inner)
-		return !isCommentedCode(s) && !isDecoration(s)
+func blockKeep(block []lineInfo) []bool {
+	keep := make([]bool, len(block))
+	var prose []int
+	for i, li := range block {
+		if !isCommentedCode(li.inner) {
+			prose = append(prose, i)
+		}
 	}
+	if len(prose) == 0 {
+		return keep
+	}
+	var k bool
+	if len(block) == 1 {
+		k = !isDecoration(strings.TrimSpace(block[0].inner))
+	} else {
+		k = keepProseBlock(block, prose)
+	}
+	for _, i := range prose {
+		keep[i] = k
+	}
+	return keep
+}
+
+func keepProseBlock(block []lineInfo, idx []int) bool {
 	sawLabel := false
-	for _, li := range block {
-		s := strings.TrimSpace(li.inner)
-		if s == "" {
+	for _, i := range idx {
+		s := strings.TrimSpace(block[i].inner)
+		if s == "" || isDecoration(s) {
 			continue
 		}
-		if isCommentedCode(s) {
+		if !looksLikeLabel(s) {
 			return false
 		}
-		if isDecoration(s) {
-			continue
-		}
-		if looksLikeLabel(s) {
-			sawLabel = true
-			continue
-		}
-		return false
+		sawLabel = true
 	}
 	return sawLabel
 }
@@ -173,7 +190,19 @@ func isCommentedCode(s string) bool {
 		commentedAliasRe.MatchString(s) ||
 		commentedFuncKwRe.MatchString(s) ||
 		commentedFuncParenRe.MatchString(s) ||
-		commentedSourceRe.MatchString(s) ||
+		isCommentedSource(s) ||
 		commentedPluginsRe.MatchString(s) ||
 		commentedAssignRe.MatchString(s)
+}
+
+func isCommentedSource(s string) bool {
+	m := commentedSourceRe.FindStringSubmatch(s)
+	if m == nil {
+		return false
+	}
+	target := strings.Trim(m[1], `"'`)
+	if target == "" || strings.Contains(target, "://") {
+		return false
+	}
+	return strings.ContainsAny(target[:1], "~$/.") || strings.ContainsAny(target, "/.")
 }

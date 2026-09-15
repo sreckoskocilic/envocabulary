@@ -1411,7 +1411,7 @@ func TestRunCatalog_DiscoverError(t *testing.T) {
 
 func TestRunScan_TraceWarning(t *testing.T) {
 	stubCurrentEnv(t, map[string]string{"FOO": "bar"}, nil)
-	stubTrace(t, nil, errors.New("trace boom"))
+	stubTrace(t, nil, errors.New("zsh trace unavailable: boom"))
 	var stdout, stderr bytes.Buffer
 	code := runScan([]string{"--shell", "zsh"}, &stdout, &stderr)
 	if code != 0 {
@@ -1422,9 +1422,40 @@ func TestRunScan_TraceWarning(t *testing.T) {
 	}
 }
 
+func TestRunExplain_PartialTraceStillAttributes(t *testing.T) {
+	stubCurrentEnv(t, map[string]string{"EDITOR": "vim"}, nil)
+	stubTrace(t, []model.TraceEntry{{File: "/u/.zshrc", Line: 4, Name: "EDITOR", Raw: "export EDITOR=vim"}}, errors.New("zsh trace incomplete, shell exited early: exit status 3"))
+	var stdout, stderr bytes.Buffer
+	if code := runExplain([]string{"EDITOR"}, &stdout, &stderr); code != 0 {
+		t.Errorf("expected 0, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "incomplete") {
+		t.Errorf("expected incomplete-trace warning; got %q", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "/u/.zshrc:4") {
+		t.Errorf("partial trace must still attribute; got:\n%s", stdout.String())
+	}
+}
+
+func TestRunExplain_WarnsOnUnsupportedShell(t *testing.T) {
+	stubCurrentEnv(t, map[string]string{"EDITOR": "vim"}, nil)
+	stubTrace(t, nil, nil)
+	t.Setenv("SHELL", "/opt/homebrew/bin/fish")
+	var stdout, stderr bytes.Buffer
+	runExplain([]string{"EDITOR"}, &stdout, &stderr)
+	if !strings.Contains(stderr.String(), "$SHELL is fish") {
+		t.Errorf("expected shell warning; got %q", stderr.String())
+	}
+	stderr.Reset()
+	runExplain([]string{"--shell", "zsh", "EDITOR"}, &stdout, &stderr)
+	if strings.Contains(stderr.String(), "$SHELL") {
+		t.Errorf("explicit --shell must silence the warning; got %q", stderr.String())
+	}
+}
+
 func TestRunExplain_TraceWarning(t *testing.T) {
 	stubCurrentEnv(t, map[string]string{"EDITOR": "vim"}, nil)
-	stubTrace(t, nil, errors.New("trace boom"))
+	stubTrace(t, nil, errors.New("zsh trace unavailable: boom"))
 	var stdout, stderr bytes.Buffer
 	code := runExplain([]string{"EDITOR"}, &stdout, &stderr)
 	if code != 0 {

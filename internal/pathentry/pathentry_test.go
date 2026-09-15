@@ -1,7 +1,7 @@
 package pathentry
 
 import (
-	"errors"
+	"io/fs"
 	"os"
 	"testing"
 
@@ -331,7 +331,7 @@ func TestCheckExists(t *testing.T) {
 		if existing[name] {
 			return nil, nil
 		}
-		return nil, errors.New("not found")
+		return nil, fs.ErrNotExist
 	}
 	t.Cleanup(func() { statDir = orig })
 
@@ -351,6 +351,17 @@ func TestCheckExists(t *testing.T) {
 
 func TestCheckExists_Empty(t *testing.T) {
 	CheckExists(nil)
+}
+
+func TestCheckExists_PermissionErrorIsUnknown(t *testing.T) {
+	orig := statDir
+	statDir = func(string) (os.FileInfo, error) { return nil, fs.ErrPermission }
+	t.Cleanup(func() { statDir = orig })
+	entries := []Entry{{Dir: "/locked"}}
+	CheckExists(entries)
+	if entries[0].Exists != nil {
+		t.Errorf("EACCES must not be reported as missing; got exists=%v", *entries[0].Exists)
+	}
 }
 
 func TestAttribute_BareAssignmentTrailingSpace(t *testing.T) {

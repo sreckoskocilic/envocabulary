@@ -81,7 +81,7 @@ func TestEnvWithPS4_InjectsPS4ZshFormat(t *testing.T) {
 	t.Setenv("PS4", "OLD")
 	t.Setenv("FOO_TEST_VAR", "marker")
 
-	got := envWithPS4("+%x:%I> ")
+	got := buildEnvNoBaseline("+%x:%I> ")
 
 	var ps4Count, fooCount int
 	for _, kv := range got {
@@ -104,7 +104,7 @@ func TestEnvWithPS4_InjectsPS4ZshFormat(t *testing.T) {
 }
 
 func TestEnvWithPS4_InjectsBashFormat(t *testing.T) {
-	got := envWithPS4("+${BASH_SOURCE}:${LINENO}> ")
+	got := buildEnvNoBaseline("+${BASH_SOURCE}:${LINENO}> ")
 	hasBashPS4 := false
 	for _, kv := range got {
 		if kv == "PS4=+${BASH_SOURCE}:${LINENO}> " {
@@ -167,10 +167,6 @@ func TestCurrentEnv_ErrorWhenEnvBinaryMissing(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected error when `env` binary cannot be located")
 	}
-}
-
-func TestTracedStartup_Smoke(t *testing.T) {
-	_, _ = TracedStartup()
 }
 
 func TestBashTracer_Smoke(t *testing.T) {
@@ -397,5 +393,73 @@ func TestZshTracer_FunctionAndEvalLinesAreFileRelative(t *testing.T) {
 	}
 	if len(want) != 0 {
 		t.Fatalf("not found in trace: %v\n%s", want, out)
+	}
+}
+
+func TestTracedStartupWith_KeepsPartialTraceWithError(t *testing.T) {
+	raw := "+/u/.zshrc:1> > export EARLY=1\n"
+	got, err := TracedStartupWith(fakeTracer{output: raw, err: errors.New("zsh trace incomplete")})
+	if err == nil {
+		t.Fatal("expected the tracer error to be returned alongside the partial trace")
+	}
+	if len(got) != 1 || got[0].Name != "EARLY" {
+		t.Errorf("partial trace must still be parsed; got %+v", got)
+	}
+}
+
+func TestZshTracer_EarlyExitReportsIncompleteTrace(t *testing.T) {
+	if _, err := exec.LookPath("zsh"); err != nil {
+		t.Skip("zsh not installed")
+	}
+	dir := t.TempDir()
+	rc := "export BEFORE_EXIT=1\nexit 3\nexport AFTER_EXIT=1\n"
+	if err := os.WriteFile(filepath.Join(dir, ".zshrc"), []byte(rc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ZDOTDIR", dir)
+	t.Setenv("HOME", dir)
+
+	out, err := ZshTracer{}.RawTrace()
+	if err == nil || !strings.Contains(err.Error(), "incomplete") {
+		t.Fatalf("want incomplete-trace error, got %v", err)
+	}
+	if !strings.Contains(out, "BEFORE_EXIT") {
+		t.Errorf("partial output must be returned; got:\n%s", out)
+	}
+}
+
+func TestZshTracer_BackgroundChildIsNotIncomplete(t *testing.T) {
+	if testing.Short() {
+		t.Skip("waits out WaitDelay")
+	}
+	if _, err := exec.LookPath("zsh"); err != nil {
+		t.Skip("zsh not installed")
+	}
+	dir := t.TempDir()
+	rc := "export WITH_DAEMON=1\n(sleep 8 &)\n"
+	if err := os.WriteFile(filepath.Join(dir, ".zshrc"), []byte(rc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ZDOTDIR", dir)
+	t.Setenv("HOME", dir)
+
+	out, err := ZshTracer{}.RawTrace()
+	if err != nil {
+		t.Fatalf("a backgrounded descendant holding stderr is not an incomplete trace; got %v", err)
+	}
+	if !strings.Contains(out, "WITH_DAEMON") {
+		t.Errorf("trace missing; got:\n%s", out)
+	}
+}
+
+func buildEnvNoBaseline(ps4 string) []string { return buildEnv(ps4, false) }
+
+func TestShellWarning(t *testing.T) {
+	cases := map[string]bool{"/bin/zsh": false, "/bin/bash": false, "": false, "/opt/homebrew/bin/fish": true, "/bin/sh": true}
+	for shell, want := range cases {
+		t.Setenv("SHELL", shell)
+		if got := ShellWarning() != ""; got != want {
+			t.Errorf("SHELL=%q: warning=%v, want %v", shell, got, want)
+		}
 	}
 }

@@ -163,25 +163,63 @@ func extractValue(raw string) string {
 	if raw == "" {
 		return ""
 	}
-	if c := raw[0]; c == '"' || c == '\'' {
-		if end := strings.IndexByte(raw[1:], c); end >= 0 {
-			return raw[1 : 1+end]
-		}
-		return raw[1:]
+	if raw[0] == '(' {
+		return arrayValue(raw)
 	}
 	var b strings.Builder
+	var quote byte
 	for i := 0; i < len(raw); i++ {
-		if raw[i] == '\\' && i+1 < len(raw) {
-			b.WriteByte(raw[i+1])
-			i++
+		c := raw[i]
+		if quote != 0 {
+			i += quotedByte(&b, &quote, raw, i)
 			continue
 		}
-		if raw[i] == ' ' || raw[i] == '\t' {
-			break
+		switch {
+		case c == '\'' || c == '"':
+			quote = c
+		case c == '\\' && i+1 < len(raw):
+			b.WriteByte(raw[i+1])
+			i++
+		case c == ' ' || c == '\t':
+			return b.String()
+		default:
+			b.WriteByte(c)
 		}
-		b.WriteByte(raw[i])
 	}
 	return b.String()
+}
+
+// Returns how many extra bytes past raw[i] were consumed.
+func quotedByte(b *strings.Builder, quote *byte, raw string, i int) int {
+	c := raw[i]
+	if c == *quote {
+		*quote = 0
+		return 0
+	}
+	if *quote == '"' && c == '\\' && i+1 < len(raw) && (raw[i+1] == '"' || raw[i+1] == '\\') {
+		b.WriteByte(raw[i+1])
+		return 1
+	}
+	b.WriteByte(c)
+	return 0
+}
+
+func arrayValue(raw string) string {
+	var quote byte
+	for i := 1; i < len(raw); i++ {
+		c := raw[i]
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '\'' || c == '"':
+			quote = c
+		case c == ')':
+			return "(" + strings.Join(strings.Fields(raw[1:i]), " ") + ")"
+		}
+	}
+	return "(" + strings.Join(strings.Fields(raw[1:]), " ")
 }
 
 func stripQuotes(s string) string {
@@ -250,39 +288,41 @@ func ParseReader(r io.Reader) ([]Item, error) {
 	for sc.Scan() {
 		lineNo++
 		line := sc.Text()
-		if lineNo == 1 {
-			line = strings.TrimPrefix(line, "\ufeff")
-		}
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+		if lineNo == 1 && strings.HasPrefix(line, "\ufeff") {
 			continue
 		}
-		if m := exportRe.FindStringSubmatch(line); m != nil {
-			items = append(items, Item{Kind: KindExport, Name: m[1], Line: lineNo, Value: extractValue(m[2])})
-			continue
-		}
-		if m := aliasRe.FindStringSubmatch(line); m != nil {
-			items = append(items, Item{Kind: KindAlias, Name: m[1], Line: lineNo, Value: extractValue(m[2])})
-			continue
-		}
-		if m := funcKwRe.FindStringSubmatch(line); m != nil {
-			if !reservedFuncNames[m[1]] {
-				items = append(items, Item{Kind: KindFunction, Name: m[1], Line: lineNo})
-			}
-			continue
-		}
-		if m := funcParenRe.FindStringSubmatch(line); len(m) > 1 && !reservedFuncNames[m[1]] {
-			items = append(items, Item{Kind: KindFunction, Name: m[1], Line: lineNo})
-			continue
-		}
-		if m := sourceRe.FindStringSubmatch(line); m != nil {
-			items = append(items, Item{Kind: KindSource, Name: stripQuotes(m[1]), Line: lineNo})
-			continue
-		}
-		if m := assignRe.FindStringSubmatch(line); len(m) > 1 && !reservedFuncNames[m[1]] {
-			items = append(items, Item{Kind: KindAssign, Name: m[1], Line: lineNo, Value: extractValue(m[2])})
-			continue
+		if it, ok := parseLine(line, lineNo); ok {
+			items = append(items, it)
 		}
 	}
-	return items, sc.Err()
+	if err := sc.Err(); err != nil {
+		return items, fmt.Errorf("line %d: %w", lineNo+1, err)
+	}
+	return items, nil
+}
+
+func parseLine(line string, lineNo int) (Item, bool) {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+		return Item{}, false
+	}
+	if m := exportRe.FindStringSubmatch(line); m != nil {
+		return Item{Kind: KindExport, Name: m[1], Line: lineNo, Value: extractValue(m[2])}, true
+	}
+	if m := aliasRe.FindStringSubmatch(line); m != nil {
+		return Item{Kind: KindAlias, Name: m[1], Line: lineNo, Value: extractValue(m[2])}, true
+	}
+	if m := funcKwRe.FindStringSubmatch(line); m != nil {
+		return Item{Kind: KindFunction, Name: m[1], Line: lineNo}, !reservedFuncNames[m[1]]
+	}
+	if m := funcParenRe.FindStringSubmatch(line); len(m) > 1 && !reservedFuncNames[m[1]] {
+		return Item{Kind: KindFunction, Name: m[1], Line: lineNo}, true
+	}
+	if m := sourceRe.FindStringSubmatch(line); m != nil {
+		return Item{Kind: KindSource, Name: stripQuotes(m[1]), Line: lineNo}, true
+	}
+	if m := assignRe.FindStringSubmatch(line); len(m) > 1 && !reservedFuncNames[m[1]] {
+		return Item{Kind: KindAssign, Name: m[1], Line: lineNo, Value: extractValue(m[2])}, true
+	}
+	return Item{}, false
 }

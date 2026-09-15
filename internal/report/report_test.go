@@ -281,3 +281,32 @@ func TestBuild_ReportsUnreadableFiles(t *testing.T) {
 		t.Errorf("html report hides the unreadable file")
 	}
 }
+
+func TestBuild_ArraysParsedFromRealLines(t *testing.T) {
+	parse := func(path, src string) inventory.File {
+		items, err := inventory.ParseReader(strings.NewReader(src))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return inventory.File{Path: path, Role: inventory.RoleCanonicalZsh, Items: items}
+	}
+	files := []inventory.File{
+		parse("/home/u/.zprofile", "plugins=(git docker)\nMULTI=(\nSAME=(a b)\n"),
+		parse("/home/u/.zshrc", "plugins=(git kubectl)\nMULTI=(\nSAME=( a  b )\n"),
+	}
+	r := Build(files)
+	safe := make([]string, 0, len(r.Safe))
+	review := make([]string, 0, len(r.Review))
+	for _, e := range r.Safe {
+		safe = append(safe, e.Definition)
+	}
+	for _, e := range r.Review {
+		review = append(review, e.Definition)
+	}
+	if len(safe) != 1 || !strings.Contains(safe[0], "SAME") {
+		t.Errorf("only SAME is identical; safe=%v", safe)
+	}
+	if len(review) != 2 {
+		t.Errorf("plugins differ and MULTI is unparseable on one line; review=%v", review)
+	}
+}

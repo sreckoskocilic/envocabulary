@@ -48,7 +48,7 @@ tidy:  ## Tidy go.mod
 	$(GO) mod tidy
 
 clean:  ## Remove build artifacts
-	rm -f $(BINARY) $(COVERAGE_FILE) coverage.gated.out coverage.html
+	rm -f $(BINARY) $(COVERAGE_FILE) coverage.html
 	rm -rf dist/
 
 release-snapshot:  ## Build a local snapshot release with goreleaser (requires goreleaser installed)

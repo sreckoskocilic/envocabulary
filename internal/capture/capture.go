@@ -53,45 +53,38 @@ func currentEnv() (map[string]string, error) {
 type ZshTracer struct{ BaselineLists bool }
 
 func (t ZshTracer) RawTrace() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), traceTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "zsh", "-l", "-i", "-x", "-c", "exit")
-	cmd.Env = buildEnv("+%x:%I> %N> ", t.BaselineLists)
-	stderr := &boundedWriter{max: maxTraceBytes}
-	cmd.Stderr = stderr
-	cmd.WaitDelay = waitDelay
-	err := cmd.Run()
-	out := stderr.String()
-	if err != nil && out == "" {
-		return "", fmt.Errorf("zsh trace: %w", err)
-	}
-	return out, nil
+	return runTrace("zsh", "+%x:%I> %N> ", t.BaselineLists)
 }
 
 type BashTracer struct{ BaselineLists bool }
 
 func (t BashTracer) RawTrace() (string, error) {
+	return runTrace("bash", `+${BASH_SOURCE}:${LINENO}> ${FUNCNAME:-}> `, t.BaselineLists)
+}
+
+func runTrace(shell, ps4 string, baselineLists bool) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), traceTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "bash", "-l", "-i", "-x", "-c", "exit")
-	cmd.Env = buildEnv(`+${BASH_SOURCE}:${LINENO}> ${FUNCNAME:-}> `, t.BaselineLists)
+	cmd := exec.CommandContext(ctx, shell, "-l", "-i", "-x", "-c", "exit")
+	cmd.Env = buildEnv(ps4, baselineLists)
 	stderr := &boundedWriter{max: maxTraceBytes}
 	cmd.Stderr = stderr
 	cmd.WaitDelay = waitDelay
 	err := cmd.Run()
 	out := stderr.String()
-	if err != nil && out == "" {
-		return "", fmt.Errorf("bash trace: %w", err)
+	if err == nil || errors.Is(err, exec.ErrWaitDelay) {
+		return out, nil
 	}
-	return out, nil
-}
-
-func TracedStartup() ([]model.TraceEntry, error) {
-	t, err := TracerForShell("")
-	if err != nil {
-		return nil, err
+	if ctx.Err() != nil {
+		err = fmt.Errorf("timed out after %s", traceTimeout)
 	}
-	return TracedStartupWith(t)
+	if out == "" {
+		return "", fmt.Errorf("%s trace unavailable: %w", shell, err)
+	}
+	if i := strings.LastIndexByte(out, '\n'); i >= 0 {
+		out = out[:i+1]
+	}
+	return out, fmt.Errorf("%s trace incomplete, shell exited early: %w", shell, err)
 }
 
 type Tracer interface {
@@ -100,21 +93,26 @@ type Tracer interface {
 
 func TracedStartupWith(t Tracer) ([]model.TraceEntry, error) {
 	raw, err := t.RawTrace()
-	if err != nil {
+	if raw == "" {
 		return nil, err
 	}
-	return parseTrace(raw), nil
+	return parseTrace(raw), err
 }
 
 func DetectShell() string {
-	base := filepath.Base(os.Getenv("SHELL"))
-	switch base {
-	case "bash":
+	if filepath.Base(os.Getenv("SHELL")) == "bash" {
 		return "bash"
-	case "zsh", "":
-		return "zsh"
 	}
 	return "zsh"
+}
+
+func ShellWarning() string {
+	base := filepath.Base(os.Getenv("SHELL"))
+	switch base {
+	case "zsh", "bash", ".":
+		return ""
+	}
+	return fmt.Sprintf("$SHELL is %s; tracing zsh instead, pass --shell zsh|bash to choose", base)
 }
 
 func TracerForShell(name string) (Tracer, error) { return tracerFor(name, false) }
@@ -142,8 +140,6 @@ func BaselineListValue(name string) string {
 	}
 	return ""
 }
-
-func envWithPS4(ps4 string) []string { return buildEnv(ps4, false) }
 
 func buildEnv(ps4 string, baselineLists bool) []string {
 	e := os.Environ()

@@ -1,6 +1,8 @@
 package pathentry
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"regexp"
 	"strings"
@@ -23,6 +25,9 @@ var statDir = os.Stat
 func CheckExists(entries []Entry) {
 	for i := range entries {
 		_, err := statDir(entries[i].Dir)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
 		b := err == nil
 		entries[i].Exists = &b
 	}

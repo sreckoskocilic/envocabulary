@@ -186,6 +186,13 @@ func TestExtractValue(t *testing.T) {
 		{"leading whitespace stripped", "  bar", "bar"},
 		{"value contains equals", "b=c", "b=c"},
 		{"tab-separated trailing", "/path\t# comment", "/path"},
+		{"escaped quote inside double quotes", `"say \"hi\"" # c`, `say "hi"`},
+		{"quoted then unquoted segment", `"abc"def ghi`, "abcdef"},
+		{"unquoted then quoted segment", `abc"d e"f`, "abcd ef"},
+		{"array", `(git docker  kubectl) # c`, "(git docker kubectl)"},
+		{"array with quoted element containing paren", `("a)b" c)`, `("a)b" c)`},
+		{"array unclosed on this line", `(git`, "(git"},
+		{"empty array", `()`, "()"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -319,16 +326,24 @@ func TestHasOrphanPrefix(t *testing.T) {
 	}
 }
 
-func TestParseReader_StripsUTF8BOM(t *testing.T) {
+func TestParseReader_BOMLineIsNotADefinition(t *testing.T) {
 	items, err := ParseReader(strings.NewReader("\ufeffexport BOM_VAR=1\nexport SECOND=2\n"))
 	if err != nil {
 		t.Fatalf("ParseReader: %v", err)
 	}
-	if len(items) != 2 {
-		t.Fatalf("got %d items, want 2: %+v", len(items), items)
+	if len(items) != 1 || items[0].Name != "SECOND" {
+		t.Fatalf("zsh and bash reject a BOM-prefixed line 1 (command not found); got %+v", items)
 	}
-	if items[0].Name != "BOM_VAR" || items[0].Value != "1" {
-		t.Errorf("got %+v, want BOM_VAR=1", items[0])
+}
+
+func TestParseReader_TooLongLineReportsLineNumber(t *testing.T) {
+	in := "export A=1\nexport B=" + strings.Repeat("x", 1024*1024+1) + "\nexport C=3\n"
+	items, err := ParseReader(strings.NewReader(in))
+	if err == nil || !strings.Contains(err.Error(), "line 2:") {
+		t.Fatalf("want error naming line 2, got %v", err)
+	}
+	if len(items) != 1 || items[0].Name != "A" {
+		t.Errorf("items before the long line must survive; got %+v", items)
 	}
 }
 

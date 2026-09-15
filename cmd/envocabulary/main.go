@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"slices"
 	"strings"
 
@@ -30,6 +31,37 @@ var (
 	commit  = "none"
 	date    = "unknown"
 )
+
+func versionString() string {
+	v, c, d := version, commit, date
+	if v == "dev" {
+		if bi, ok := debug.ReadBuildInfo(); ok {
+			if bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+				v = strings.TrimPrefix(bi.Main.Version, "v")
+			}
+			for _, st := range bi.Settings {
+				switch st.Key {
+				case "vcs.revision":
+					if len(st.Value) >= 7 {
+						c = st.Value[:7]
+					}
+				case "vcs.time":
+					d = st.Value
+				}
+			}
+		}
+	}
+	return fmt.Sprintf("envocabulary %s (commit %s, built %s)", v, c, d)
+}
+
+func warnShell(stderr io.Writer, shellFlag string) {
+	if shellFlag != "" {
+		return
+	}
+	if w := capture.ShellWarning(); w != "" {
+		fmt.Fprintln(stderr, "warning:", w)
+	}
+}
 
 var createReportFile = func(name string) (io.WriteCloser, error) {
 	return os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
@@ -65,7 +97,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			usage(stdout)
 			return 0
 		case "-V", "--version", "version":
-			fmt.Fprintf(stdout, "envocabulary %s (commit %s, built %s)\n", version, commit, date)
+			fmt.Fprintln(stdout, versionString())
 			return 0
 		}
 		if !strings.HasPrefix(args[0], "-") {
@@ -103,96 +135,118 @@ func run(args []string, stdout, stderr io.Writer) int {
 func usage(w io.Writer) {
 	fmt.Fprint(w, `envocabulary — shell env-var forensics & static config audit (read-only)
 
-Live-env (introspects the running shell):
+Live env (reads the running shell):
   scan [--json] [--values] [--shell SHELL]
-      Prints all variables in the current env grouped by origin.
+      All variables in the current env, grouped by origin.
 
   explain [--json] [--values] [--chain] [--shell SHELL] NAME
-      Prints full attribution for provided variable.
+      Full attribution for one variable.
 
   path [--json] [--chain] [--check] [--shell SHELL] [VARNAME...]
       Per-entry attribution for colon-separated path variables.
 
-Static-file:
+Static files (the dotfiles in $HOME and their backup variants):
   inventory
-      Lists all shell config files and counts definitions by type.
+      Config files found and definition counts by type.
 
   catalog [--orphans] [--bash] [-n] [--dedup]
-      Prints entire shell configuration by merging all its config files.
+      All config files concatenated in the order the shell reads them.
 
   dedup [--bash]
-      Cross-file duplicate report for exports, assigns, aliases, functions.
+      Duplicate definitions within and across files.
 
   dangling [--orphans] [--bash]
-      Lists config file entries that no longer reference a valid target.
+      Sources and path exports whose target no longer exists.
 
   lost [--bash]
-      Lists definitions unique to orphan/backup config files.
+      Definitions that exist only in orphan/backup files.
 
   clean [--full] FILE
-      Prints safe-to-remove lines of provided file.
+      Comment lines that would be stripped; --full prints the cleaned file.
 
   report [--html] [--bash]
       Combined audit: safe-to-delete, review, dangling, orphaned files.
-      --html writes a timestamped .html file into the current directory.
 
 Other:
-  -V, --version
-      Prints version, commit, and build date.
+  -V, --version, version
+      Version, commit, and build date.
+  -h, --help, help
+
+Exit status: 0 ok; 1 runtime error, or dangling / path --check found something;
+2 usage error. Warnings go to stderr, output to stdout.
 
 Run with no arguments for scan. envocabulary <command> -h for per-command help.
 `)
 }
 
 func helpScan(w io.Writer) {
-	fmt.Fprint(w, `envocabulary scan — prints all variables in the current env grouped by origin
+	fmt.Fprint(w, `envocabulary scan — all variables in the current env, grouped by origin
 
 Usage:
   envocabulary scan [--json] [--values] [--shell SHELL]
   envocabulary [--json] [--values]                (scan is the default command)
 
+Origins: shell-file (file:line from tracing a login shell), direnv, terminal,
+ssh, launchd, system, deferred-list-var (PATH-like; use envocabulary path),
+unknown.
+
 Flags:
-  --json          emit JSON instead of grouped text
-  --values        include values in output (may expose secrets)
-  --shell SHELL   force tracer (zsh|bash); default auto-detects
+  --json          emit JSON: [{name, value?, origin, source?, notes?}]
+  --values        include values (may expose secrets); text output truncates
+                  them to 60 characters, --json prints them whole
+  --shell SHELL   force tracer (zsh|bash); default: bash if $SHELL is bash,
+                  otherwise zsh
 
 Examples:
   envocabulary scan
   envocabulary scan --shell bash
   envocabulary scan --json | jq '.[] | select(.origin=="shell-file")'
-  envocabulary scan --values | grep -i token
+  envocabulary scan --values --json | jq -r '.[] | select(.value|test("token";"i")) | .name'
 `)
 }
 
 func helpExplain(w io.Writer) {
-	fmt.Fprint(w, `envocabulary explain — prints full attribution for provided variable
+	fmt.Fprint(w, `envocabulary explain — full attribution for one variable
 
 Usage:
   envocabulary explain [--json] [--values] [--chain] [--shell SHELL] NAME
+
+Shows the origin, the winning writer (primary) and every file:line that
+assigned the variable during login, in execution order. Variables set through
+eval "$(...)" or inside a function resolve to the eval or the function body
+line in the file.
 
 Arguments:
   NAME            the env variable name (e.g. JAVA_HOME, EDITOR)
 
 Flags:
-  --json          emit JSON
+  --json          emit JSON: {name, present, value?, origin, primary?,
+                  writers: [{file, line, name, raw?, chain?}], notes?}
   --values        include value and raw assignment lines (may expose secrets)
   --chain         show source chain (which file sourced the file that set the var)
-  --shell SHELL   force tracer (zsh|bash); default auto-detects
+  --shell SHELL   force tracer (zsh|bash); default: bash if $SHELL is bash,
+                  otherwise zsh
 
 Examples:
   envocabulary explain JAVA_HOME
   envocabulary explain --values EDITOR
   envocabulary explain --chain EDITOR
-  envocabulary explain --shell bash PATH
+  envocabulary explain --shell bash EDITOR
   envocabulary explain --json EDITOR | jq
 `)
 }
 
 func helpInventory(w io.Writer) {
-	fmt.Fprint(w, `envocabulary inventory — lists all shell config files and counts definitions by type
+	fmt.Fprint(w, `envocabulary inventory — config files found and definition counts by type
 
 Usage:
   envocabulary inventory
+
+Scans $HOME only: .zshenv .zprofile .zshrc .zlogin .zlogout .bashrc
+.bash_profile .profile, plus variants of those names (NAME.*, NAME_*, NAME-*,
+e.g. .zshrc.backup) as orphans. $ZDOTDIR, ~/.config/zsh, /etc and files you
+source are not scanned. Counts cover exports, assigns, aliases, functions and
+source lines; one definition per line.
 
 Examples:
   envocabulary inventory
@@ -201,12 +255,14 @@ Examples:
 }
 
 func helpCatalog(w io.Writer) {
-	fmt.Fprint(w, `envocabulary catalog — prints entire shell configuration by merging all its config files
+	fmt.Fprint(w, `envocabulary catalog — all config files concatenated in the order the shell reads them
 
 Usage:
   envocabulary catalog [--orphans] [--bash] [-n] [--dedup]
 
-Prints your zsh config files (.zshenv, .zprofile, .zshrc, .zlogin, .zlogout)
+Prints .zshenv, .zprofile, .zshrc, .zlogin, .zlogout in login order, each under
+a header with its path. Exits 1 if a file could not be read; the output is then
+incomplete.
 
 Flags:
   --orphans       also include zsh backup/variant files (.zshrc.backup, ...); with --bash, bash variants too. Never annotated by --dedup
@@ -225,13 +281,18 @@ Examples:
 }
 
 func helpDangling(w io.Writer) {
-	fmt.Fprint(w, `envocabulary dangling — lists config file entries that no longer reference a valid target
+	fmt.Fprint(w, `envocabulary dangling — sources and path exports whose target no longer exists
 
 Usage:
   envocabulary dangling [--orphans] [--bash]
 
+Checks source/. targets and export/assign values that look like a literal
+absolute or ~/ path. Values with $VAR, $(...) or colons (PATH-like) cannot be
+resolved statically and are skipped. Exits 1 when anything is found, so it
+works as a check in scripts.
+
 Flags:
-  --orphans  include orphan/backup files in the search
+  --orphans  also check zsh backup/variant files; with --bash, bash variants too
   --bash     include bash config files
 
 Examples:
@@ -261,18 +322,23 @@ Examples:
 }
 
 func helpClean(w io.Writer) {
-	fmt.Fprint(w, `envocabulary clean — prints safe-to-remove lines of provided file
+	fmt.Fprint(w, `envocabulary clean — comment lines that would be stripped from a config file
 
 Usage:
   envocabulary clean [--full] FILE
 
-Previews which lines would be stripped (dry-run).
+Strips commented-out code (# export FOO=..., # alias x=..., # source ...),
+decoration bars (# -----) and multi-line comment blocks of prose such as
+template boilerplate. Single-line comments and short section labels are kept.
+Multi-line prose you wrote yourself is also stripped: review the preview
+before redirecting. Never touches non-comment lines and never writes to FILE.
 
 Arguments:
   FILE         path to the shell config file (e.g. ~/.zshrc, ~/.bashrc)
 
 Flags:
-  --full       emits full cleaned content
+  --full       print the cleaned file to stdout instead of the preview;
+               a "# N kept, M stripped" summary goes to stderr
 
 Examples:
   envocabulary clean ~/.zshrc
@@ -401,7 +467,9 @@ func helpLost(w io.Writer) {
 Usage:
   envocabulary lost [--bash]
 
-Scans orphan/backup config files for definitions not present in any canonical config.
+Scans orphan/backup config files (.zshrc.backup, .zprofile.old, ...) for
+definitions whose name does not appear in any file the shell reads. export and
+plain assignment of the same name count as one definition.
 
 Flags:
   --bash  include bash config files
@@ -618,12 +686,16 @@ func helpReport(w io.Writer) {
 Usage:
   envocabulary report [--html] [--bash]
 
-Generates aligned text tables summary report containing
-safe-to-delete, review, dangling, orphaned files.
+Sections: SAFE TO DELETE (duplicates with the same value as the winner),
+REVIEW (duplicates whose value differs, plus every duplicate function),
+DANGLING, ORPHANED FILES, UNREADABLE FILES. Backup/variant files are always
+scanned: they feed ORPHANED FILES and DANGLING but never SAFE TO DELETE or
+REVIEW. Definition values are printed as written in the file.
 
 Flags:
-  --html   write HTML report to MM_DD_YYYY_HH_MM.html in current directory
-           (never overwrites: a taken name gets a -2, -3, ... suffix)
+  --html   write the report to MM_DD_YYYY_HH_MM.html in the current directory,
+           mode 0600, and print the file name; a taken name gets a -2, -3, ...
+           suffix, nothing is overwritten
   --bash   include bash config files
 
 Examples:
@@ -705,6 +777,7 @@ func runScan(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "error:", err)
 		return 2
 	}
+	warnShell(stderr, *shellFlag)
 
 	current, err := capture.CurrentEnv()
 	if err != nil {
@@ -713,8 +786,7 @@ func runScan(args []string, stdout, stderr io.Writer) int {
 
 	trace, err := tracedStartup(tracer)
 	if err != nil {
-		fmt.Fprintf(stderr, "warning: trace unavailable, falling back to classification-only: %v\n", err)
-		trace = nil
+		fmt.Fprintf(stderr, "warning: %v; falling back to classification where the trace is missing\n", err)
 	}
 
 	words := attribute.Attribute(current, trace)
@@ -749,6 +821,7 @@ func runExplain(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "error:", err)
 		return 2
 	}
+	warnShell(stderr, *shellFlag)
 
 	current, err := capture.CurrentEnv()
 	if err != nil {
@@ -757,8 +830,7 @@ func runExplain(args []string, stdout, stderr io.Writer) int {
 
 	trace, err := tracedStartup(tracer)
 	if err != nil {
-		fmt.Fprintf(stderr, "warning: trace unavailable: %v\n", err)
-		trace = nil
+		fmt.Fprintf(stderr, "warning: %v\n", err)
 	}
 
 	result := explain.Explain(name, current, trace)
@@ -779,16 +851,23 @@ func helpPath(w io.Writer) {
 Usage:
   envocabulary path [--json] [--chain] [--check] [--shell SHELL] [VARNAME...]
 
-Shows where each entry in PATH, MANPATH, FPATH, etc. was introduced.
+Shows where each entry in PATH, MANPATH, FPATH, etc. was introduced by
+replaying the login shell with the list variables reset. Entries the seed
+provides (/usr/bin /bin /usr/sbin /sbin) or that were already in the env before
+login show as inherited. zsh array forms (path=(...), path+=(...)) are not
+recognized yet.
 
 Arguments:
-  VARNAME...      specific variables (default: all deferred-list vars in env)
+  VARNAME...      PATH MANPATH FPATH INFOPATH CDPATH DYLD_* (default: all present)
 
 Flags:
-  --json          emit JSON
+  --json          emit JSON: [{name, entries: [{dir, file?, line?, chain?, exists?}]}]
   --chain         show source chain
-  --check         show only entries whose directory does not exist (exit 1 if any)
-  --shell SHELL   force tracer (zsh|bash); default auto-detects
+  --check         show only entries whose directory does not exist and exit 1 if
+                  any; their source is re-resolved against your dotfiles and
+                  /etc/paths, /etc/paths.d so it points at the line to edit
+  --shell SHELL   force tracer (zsh|bash); default: bash if $SHELL is bash,
+                  otherwise zsh
 
 Examples:
   envocabulary path
@@ -816,6 +895,7 @@ func runPath(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "error:", err)
 		return 2
 	}
+	warnShell(stderr, *shellFlag)
 
 	current, err := capture.CurrentEnv()
 	if err != nil {
@@ -824,8 +904,7 @@ func runPath(args []string, stdout, stderr io.Writer) int {
 
 	trace, err := tracedStartup(tracer)
 	if err != nil {
-		fmt.Fprintf(stderr, "warning: trace unavailable: %v\n", err)
-		trace = nil
+		fmt.Fprintf(stderr, "warning: %v\n", err)
 	}
 
 	results := collectBreakdowns(resolvePathTargets(fs, current), current, trace)

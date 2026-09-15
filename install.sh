@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # envocabulary installer
 # Usage: curl -fsSL https://raw.githubusercontent.com/sreckoskocilic/envocabulary/main/install.sh | sh
-#        curl -fsSL https://raw.githubusercontent.com/sreckoskocilic/envocabulary/main/install.sh | sh -s -- --version v0.1.0
+#        curl -fsSL https://raw.githubusercontent.com/sreckoskocilic/envocabulary/main/install.sh | sh -s -- --version v1.0.4
 #        curl -fsSL https://raw.githubusercontent.com/sreckoskocilic/envocabulary/main/install.sh | sh -s -- --bin-dir /usr/local/bin
 
 set -eu
@@ -29,8 +29,8 @@ Usage:
   install.sh [--version VERSION] [--bin-dir DIR]
 
 Options:
-  --version VERSION   install a specific version (e.g. v0.1.0). Default: latest release.
-  --bin-dir DIR       install destination. Default: \$HOME/.local/bin (no sudo) or /usr/local/bin if writable.
+  --version VERSION   install a specific version (e.g. v1.0.4 or 1.0.4). Default: latest release.
+  --bin-dir DIR       install destination. Default: /usr/local/bin if writable, otherwise \$HOME/.local/bin.
   -h, --help          show this help and exit.
 EOF
 }
@@ -39,7 +39,8 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --version)
             [ $# -ge 2 ] || { echo "error: --version requires a value" >&2; exit 2; }
-            VERSION="$2"; shift 2 ;;
+            VERSION="$2"; shift 2
+            case "$VERSION" in v*) ;; *) VERSION="v$VERSION" ;; esac ;;
         --bin-dir)
             [ $# -ge 2 ] || { echo "error: --bin-dir requires a value" >&2; exit 2; }
             BIN_DIR="$2"; shift 2 ;;

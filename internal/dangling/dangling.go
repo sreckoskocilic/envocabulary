@@ -1,6 +1,8 @@
 package dangling
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -124,5 +126,5 @@ func expand(p string) string {
 
 func exists(p string) bool {
 	_, err := os.Stat(p)
-	return err == nil
+	return !errors.Is(err, fs.ErrNotExist)
 }

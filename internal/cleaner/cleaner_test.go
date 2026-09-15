@@ -1,6 +1,7 @@
 package cleaner
 
 import (
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -48,6 +49,16 @@ func TestClean(t *testing.T) {
 				``,
 			}, "\n"),
 			`ZSH_THEME="agnoster"` + "\n",
+		},
+		{
+			"label kept when its commented-out code is stripped",
+			"# Aliases\n# alias ll='ls -l'\nalias la='ls -a'\n",
+			"# Aliases\nalias la='ls -a'\n",
+		},
+		{
+			"boilerplate prose still stripped with its commented-out code",
+			"# Uncomment the following line to use case-sensitive completion.\n# CASE_SENSITIVE=\"true\"\nexport FOO=1\n",
+			"export FOO=1\n",
 		},
 		{
 			"real code is always kept",
@@ -146,6 +157,29 @@ func TestProcess_ReaderError(t *testing.T) {
 	}
 }
 
+func TestClean_RejectsOversizedInput(t *testing.T) {
+	r := io.MultiReader(strings.NewReader("export A=1\n"), &zeroReader{n: maxCleanBytes})
+	if _, _, err := Clean(r); !errors.Is(err, errTooLarge) {
+		t.Errorf("want errTooLarge, got %v", err)
+	}
+}
+
+type zeroReader struct{ n int }
+
+func (z *zeroReader) Read(p []byte) (int, error) {
+	if z.n <= 0 {
+		return 0, io.EOF
+	}
+	if len(p) > z.n {
+		p = p[:z.n]
+	}
+	for i := range p {
+		p[i] = '#'
+	}
+	z.n -= len(p)
+	return len(p), nil
+}
+
 func TestClean_PropagatesProcessError(t *testing.T) {
 	r := &errReader{err: io.ErrUnexpectedEOF}
 	if _, _, err := Clean(r); err == nil {
@@ -153,23 +187,42 @@ func TestClean_PropagatesProcessError(t *testing.T) {
 	}
 }
 
-func TestShouldKeepBlock_MultiLineWithCommentedCode(t *testing.T) {
+func TestBlockKeep_MultiLineWithCommentedCode(t *testing.T) {
 	block := []lineInfo{
 		{isComment: true, inner: ""},
 		{isComment: true, inner: "export FOO=bar"},
 	}
-	if shouldKeepBlock(block) {
-		t.Error("block containing commented-out code should be stripped")
+	for i, k := range blockKeep(block) {
+		if k {
+			t.Errorf("line %d: block of only commented-out code should be stripped", i)
+		}
 	}
 }
 
-func TestShouldKeepBlock_MultiLineProseNoLabel(t *testing.T) {
+func TestBlockKeep_MultiLineProseNoLabel(t *testing.T) {
 	block := []lineInfo{
 		{isComment: true, inner: "If you come from bash you might have to change things."},
 		{isComment: true, inner: "This is another long explanation that is definitely prose."},
 	}
-	if shouldKeepBlock(block) {
-		t.Error("multi-line prose without a label should be stripped")
+	for i, k := range blockKeep(block) {
+		if k {
+			t.Errorf("line %d: multi-line prose without a label should be stripped", i)
+		}
+	}
+}
+
+func TestBlockKeep_LabelSurvivesAdjacentCommentedCode(t *testing.T) {
+	block := []lineInfo{
+		{isComment: true, inner: "Aliases"},
+		{isComment: true, inner: "alias ll='ls -l'"},
+		{isComment: true, inner: "these are grouped by tool"},
+	}
+	got := blockKeep(block)
+	want := []bool{true, false, true}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("line %d: keep=%v, want %v", i, got[i], want[i])
+		}
 	}
 }
 
@@ -192,6 +245,24 @@ func TestIsCommentedCode(t *testing.T) {
 		`NOTE = this is prose, not an assignment`:   false,
 		`export these for the build tools`:          false,
 		`source of truth for my aliases lives here`: false,
+
+		`alias for the k8s cluster`:                                  false,
+		`alias names are short on purpose, see README`:               false,
+		`function to reload the shell config`:                        false,
+		`function keys are mapped in .inputrc`:                       false,
+		`main() is invoked at the end of this file`:                  false,
+		`source https://github.com/ohmyzsh/ohmyzsh/wiki for details`: false,
+		`source https://github.com/ohmyzsh/ohmyzsh/wiki`:             false,
+		`source www.example.com has the docs`:                        false,
+		`source ~/.secrets if you need the work credentials`:         false,
+		`alias -g G='| grep'`:                                        true,
+		`function mkcd() {`:                                          true,
+		`function mkcd`:                                              true,
+		`mkcd()`:                                                     true,
+		`source ~/x.zsh # disabled`:                                  true,
+		`source ~/x.zsh; rehash`:                                     true,
+		`. "$HOME/.cargo/env"`:                                       true,
+		`source helpers.zsh`:                                         true,
 	}
 	for in, want := range cases {
 		if got := isCommentedCode(in); got != want {
