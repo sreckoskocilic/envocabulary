@@ -42,7 +42,7 @@ jobs:
           go test -race -covermode=atomic -coverprofile=coverage.out ./...
           cov=$(go tool cover -func=coverage.out | awk '/total:/ {gsub(/%/,"",$3); print $3}')
           echo "Coverage: ${cov}%"
-          if awk -v c=$cov -v m=95 'BEGIN { exit (c+0 < m+0) ? 1 : 0 }'; then
+          if awk -v c="$cov" -v m=95 'BEGIN { exit (c+0 < m+0) ? 1 : 0 }'; then
             echo "✓ coverage ${cov}% meets minimum 95%"
           else
             echo "✗ coverage ${cov}% is below minimum 95%"
