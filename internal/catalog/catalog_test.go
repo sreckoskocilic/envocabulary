@@ -55,11 +55,11 @@ func TestWrite_LineNumbers(t *testing.T) {
 func TestWrite_DedupAnnotation(t *testing.T) {
 	dir := t.TempDir()
 	zprof := filepath.Join(dir, ".zprofile")
-	zshrc := filepath.Join(dir, ".zshrc")
+	zlogin := filepath.Join(dir, ".zlogin")
 	if err := os.WriteFile(zprof, []byte("export FOO=first\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(zshrc, []byte("export FOO=second\n"), 0o600); err != nil {
+	if err := os.WriteFile(zlogin, []byte("export FOO=second\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", dir)

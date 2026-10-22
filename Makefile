@@ -7,7 +7,7 @@ COVERAGE_MIN    ?= 95
 BINARY          ?= envocabulary
 PKGS            ?= ./...
 
-GOLANGCI_VERSION ?= v2.13.2
+GOLANGCI_VERSION ?= v2.15.0
 GORELEASER_VERSION ?= v2.18.1
 
 all: lint cover build  ## Run lint, tests with the coverage gate, and build (default)

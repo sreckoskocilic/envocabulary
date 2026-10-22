@@ -178,10 +178,12 @@ func parseNullSeparated(b []byte) map[string]string {
 }
 
 var (
-	traceLineRe = regexp.MustCompile(`^(\++)(.+?):(\d+)> ([^>]*)> (.*)$`)
-	evalRe      = regexp.MustCompile(`^eval(?:\s|$)`)
-	assignRe    = regexp.MustCompile(`(?:^|\s)(?:export\s+|typeset(?:\s+-[a-zA-Z]+)*\s+|declare(?:\s+-[a-zA-Z]+)*\s+|local(?:\s+-[a-zA-Z]+)*\s+)?([A-Za-z_][A-Za-z0-9_]*)=`)
-	sourceRe    = regexp.MustCompile(`^(?:source|\.)\s+([^\s;&|]+)`)
+	traceLineRe  = regexp.MustCompile(`^(\++)(.+?):(\d+)> ([^>]*)> (.*)$`)
+	evalRe       = regexp.MustCompile(`^eval(?:\s|$)`)
+	assignRe     = regexp.MustCompile(`(?:^|\s)(?:export\s+|typeset(?:\s+-[a-zA-Z]+)*\s+|declare(?:\s+-[a-zA-Z]+)*\s+|local(?:\s+-[a-zA-Z]+)*\s+)?([A-Za-z_][A-Za-z0-9_]*)=`)
+	sourceRe     = regexp.MustCompile(`^(?:source|\.)\s+([^\s;&|]+)`)
+	bareAssignRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(?:\[[^]]*\])?\+?=`)
+	declRe       = regexp.MustCompile(`^(local|typeset|declare)((?:\s+-[a-zA-Z]+)*)\s`)
 )
 
 func sourceTargets(target, file string) bool {
@@ -233,11 +235,11 @@ func parseTrace(s string) []model.TraceEntry {
 		if isEval {
 			continue
 		}
-		am := assignRe.FindStringSubmatch(rest)
-		if am == nil {
+		name, ok := writtenName(rest, ctx, file)
+		if !ok {
 			continue
 		}
-		entry := model.TraceEntry{File: file, Line: ln, Name: am[1], Raw: rest}
+		entry := model.TraceEntry{File: file, Line: ln, Name: name, Raw: rest}
 		if len(stack) > 1 {
 			entry.Chain = make([]string, len(stack)-1)
 			copy(entry.Chain, stack[:len(stack)-1])
@@ -269,4 +271,81 @@ func fileIndex(stack []string, file string) int {
 		}
 	}
 	return -1
+}
+
+func writtenName(rest, ctx, file string) (string, bool) {
+	am := assignRe.FindStringSubmatch(rest)
+	if am == nil || isLocalAssign(rest, ctx, file) || isCommandPrefix(rest) {
+		return "", false
+	}
+	return am[1], true
+}
+
+func isLocalAssign(rest, ctx, file string) bool {
+	m := declRe.FindStringSubmatch(rest)
+	if m == nil {
+		return false
+	}
+	if m[1] == "local" {
+		return true
+	}
+	return inFunction(ctx, file) && !strings.Contains(m[2], "g")
+}
+
+func inFunction(ctx, file string) bool {
+	switch ctx {
+	case "", file, "(eval)", "source", "main":
+		return false
+	}
+	return true
+}
+
+func isCommandPrefix(rest string) bool {
+	s := rest
+	for {
+		m := bareAssignRe.FindString(s)
+		if m == "" {
+			return s != rest && strings.TrimSpace(s) != ""
+		}
+		s = strings.TrimLeft(skipValue(s[len(m):]), " ")
+		if s == "" {
+			return false
+		}
+	}
+}
+
+func skipValue(s string) string {
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case c == '\\':
+			i++
+		case c == '\'':
+			i = closingQuote(s, i+1, '\'', false)
+		case c == '$' && i+1 < len(s) && s[i+1] == '\'':
+			i = closingQuote(s, i+2, '\'', true)
+		case c == '"':
+			i = closingQuote(s, i+1, '"', true)
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+		case c == ' ' && depth <= 0:
+			return s[i:]
+		}
+	}
+	return ""
+}
+
+func closingQuote(s string, i int, quote byte, escapes bool) int {
+	for ; i < len(s); i++ {
+		if escapes && s[i] == '\\' {
+			i++
+			continue
+		}
+		if s[i] == quote {
+			return i
+		}
+	}
+	return len(s)
 }

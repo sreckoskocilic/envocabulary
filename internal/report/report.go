@@ -76,7 +76,7 @@ func Build(files []inventory.File) Report {
 			loc := shortPath(l.File, l.Line, home)
 			ref := shortPath(g.Winner.File, g.Winner.Line, home)
 
-			if l.Value == g.Winner.Value && l.Kind != inventory.KindFunction && !openArray(l.Value) {
+			if dedup.Overrides(g.Winner, *l) && l.Value == g.Winner.Value && l.Kind != inventory.KindFunction && !openArray(l.Value) {
 				r.Safe = append(r.Safe, Entry{
 					Definition: def,
 					Location:   loc,

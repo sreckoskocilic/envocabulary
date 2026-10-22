@@ -15,7 +15,7 @@ func TestParseReader(t *testing.T) {
 		{
 			"export with value",
 			`export FOO=bar`,
-			[]Item{{Kind: KindExport, Name: "FOO", Line: 1, Value: "bar"}},
+			[]Item{{Kind: KindExport, Name: "FOO", Line: 1, Value: "bar", TopLevel: true}},
 		},
 		{
 			"export without value is not a definition",
@@ -25,87 +25,87 @@ func TestParseReader(t *testing.T) {
 		{
 			"export with empty value",
 			`export FOO=`,
-			[]Item{{Kind: KindExport, Name: "FOO", Line: 1}},
+			[]Item{{Kind: KindExport, Name: "FOO", Line: 1, TopLevel: true}},
 		},
 		{
 			"source target stops at semicolon",
 			`source ~/x.zsh; echo hi`,
-			[]Item{{Kind: KindSource, Name: "~/x.zsh", Line: 1}},
+			[]Item{{Kind: KindSource, Name: "~/x.zsh", Line: 1, TopLevel: true}},
 		},
 		{
 			"source target stops at &&",
 			`. /u/x.sh&&echo hi`,
-			[]Item{{Kind: KindSource, Name: "/u/x.sh", Line: 1}},
+			[]Item{{Kind: KindSource, Name: "/u/x.sh", Line: 1, TopLevel: true}},
 		},
 		{
 			"export with double-quoted value",
 			`export FOO="hello world"`,
-			[]Item{{Kind: KindExport, Name: "FOO", Line: 1, Value: "hello world"}},
+			[]Item{{Kind: KindExport, Name: "FOO", Line: 1, Value: "hello world", TopLevel: true}},
 		},
 		{
 			"export with single-quoted value",
 			`export FOO='/usr/local/bin'`,
-			[]Item{{Kind: KindExport, Name: "FOO", Line: 1, Value: "/usr/local/bin"}},
+			[]Item{{Kind: KindExport, Name: "FOO", Line: 1, Value: "/usr/local/bin", TopLevel: true}},
 		},
 		{
 			"export with trailing inline comment stripped",
 			`export FOO=/path # trailing`,
-			[]Item{{Kind: KindExport, Name: "FOO", Line: 1, Value: "/path"}},
+			[]Item{{Kind: KindExport, Name: "FOO", Line: 1, Value: "/path", TopLevel: true}},
 		},
 		{
 			"bare assignment",
 			`ZSH_THEME="robbyrussell"`,
-			[]Item{{Kind: KindAssign, Name: "ZSH_THEME", Line: 1, Value: "robbyrussell"}},
+			[]Item{{Kind: KindAssign, Name: "ZSH_THEME", Line: 1, Value: "robbyrussell", TopLevel: true}},
 		},
 		{
 			"export with backslash-escaped space in path",
 			`export TOOLS=/opt/my\ app/bin`,
-			[]Item{{Kind: KindExport, Name: "TOOLS", Line: 1, Value: "/opt/my app/bin"}},
+			[]Item{{Kind: KindExport, Name: "TOOLS", Line: 1, Value: "/opt/my app/bin", TopLevel: true}},
 		},
 		{
 			"export unquoted value stops before trailing comment",
 			`export A=1 # trailing`,
-			[]Item{{Kind: KindExport, Name: "A", Line: 1, Value: "1"}},
+			[]Item{{Kind: KindExport, Name: "A", Line: 1, Value: "1", TopLevel: true}},
 		},
 		{
 			"alias simple",
 			`alias ll='ls -la'`,
-			[]Item{{Kind: KindAlias, Name: "ll", Line: 1, Value: "ls -la"}},
+			[]Item{{Kind: KindAlias, Name: "ll", Line: 1, Value: "ls -la", TopLevel: true}},
 		},
 		{
 			"alias with flag",
 			`alias -g G='| grep'`,
-			[]Item{{Kind: KindAlias, Name: "G", Line: 1, Value: "| grep"}},
+			[]Item{{Kind: KindAlias, Name: "G", Line: 1, Value: "| grep", TopLevel: true}},
 		},
 		{
 			"function keyword form",
 			`function cdp { cd "$@"; }`,
-			[]Item{{Kind: KindFunction, Name: "cdp", Line: 1}},
+			[]Item{{Kind: KindFunction, Name: "cdp", Line: 1, TopLevel: true}},
 		},
 		{
 			"function paren form",
 			`mkcd() { mkdir -p "$1" && cd "$1"; }`,
-			[]Item{{Kind: KindFunction, Name: "mkcd", Line: 1}},
+			[]Item{{Kind: KindFunction, Name: "mkcd", Line: 1, TopLevel: true}},
 		},
 		{
 			"source keyword",
 			`source /Users/me/.extras`,
-			[]Item{{Kind: KindSource, Name: "/Users/me/.extras", Line: 1}},
+			[]Item{{Kind: KindSource, Name: "/Users/me/.extras", Line: 1, TopLevel: true}},
 		},
 		{
 			"dot source",
 			`. /Users/me/.extras`,
-			[]Item{{Kind: KindSource, Name: "/Users/me/.extras", Line: 1}},
+			[]Item{{Kind: KindSource, Name: "/Users/me/.extras", Line: 1, TopLevel: true}},
 		},
 		{
 			"source double-quoted path with spaces",
 			`source "/path with spaces/file"`,
-			[]Item{{Kind: KindSource, Name: "/path with spaces/file", Line: 1}},
+			[]Item{{Kind: KindSource, Name: "/path with spaces/file", Line: 1, TopLevel: true}},
 		},
 		{
 			"source single-quoted path with spaces",
 			`source '/path with spaces/file'`,
-			[]Item{{Kind: KindSource, Name: "/path with spaces/file", Line: 1}},
+			[]Item{{Kind: KindSource, Name: "/path with spaces/file", Line: 1, TopLevel: true}},
 		},
 		{
 			"comment ignored",
@@ -142,9 +142,9 @@ func TestParseReader(t *testing.T) {
 				`mkcd() { :; }`,
 			}, "\n"),
 			[]Item{
-				{Kind: KindExport, Name: "A", Line: 2, Value: "1"},
-				{Kind: KindAlias, Name: "ll", Line: 4, Value: "ls"},
-				{Kind: KindFunction, Name: "mkcd", Line: 5},
+				{Kind: KindExport, Name: "A", Line: 2, Value: "1", TopLevel: true},
+				{Kind: KindAlias, Name: "ll", Line: 4, Value: "ls", TopLevel: true},
+				{Kind: KindFunction, Name: "mkcd", Line: 5, TopLevel: true},
 			},
 		},
 		{
@@ -354,5 +354,51 @@ func TestParseReader_BOMOnlyStrippedFromFirstLine(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].Name != "A" {
 		t.Errorf("a BOM mid-file is not a BOM; got %+v", items)
+	}
+}
+
+func TestParseReader_TopLevel(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want map[int]bool
+	}{
+		{"plain lines", "export A=1\nB=2", map[int]bool{1: true, 2: true}},
+		{"indented line is not proven", "  export A=1", map[int]bool{1: false}},
+		{"function body", "f() {\nexport A=1\n}\nexport B=2", map[int]bool{1: true, 2: false, 4: true}},
+		{"function keyword body", "function f {\nA=1\n}", map[int]bool{1: true, 2: false}},
+		{"if and else branches", "if x; then\nA=1\nelse\nA=2\nfi\nB=3", map[int]bool{2: false, 4: false, 6: true}},
+		{"case arms", "case $x in\na) A=1 ;;\nb)\nB=2\n;;\nesac\nC=3", map[int]bool{4: false, 7: true}},
+		{"loop body", "for d in a b; do\nA=1\ndone\nB=2", map[int]bool{2: false, 4: true}},
+		{"multi-line array", "ARR=(\nA=1\n)\nB=2", map[int]bool{1: true, 2: false, 4: true}},
+		{"heredoc body", "cat <<'EOF'\nA=1\nEOF\nB=2", map[int]bool{2: false, 4: true}},
+		{"line continuation", "export A=1 \\\nB=2\nC=3", map[int]bool{1: true, 2: false, 3: true}},
+		{"multi-line string", "export A=\"x\nB=2\"\nC=3", map[int]bool{1: true, 3: true}},
+		{"expansions and comments do not nest", "A=${B:-x} # it's {\nC={a,b}\nD=$#\nE=1", map[int]bool{1: true, 2: true, 3: true, 4: true}},
+		{"keyword as argument is not a block", "echo if for\nA=1", map[int]bool{2: true}},
+		{"unclosed block makes the whole file unproven", "A=1\nif x; then\nB=2", map[int]bool{1: false, 3: false}},
+		{"stray closer makes the whole file unproven", "A=1\nfi\nB=2", map[int]bool{1: false, 3: false}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			items, err := ParseReader(strings.NewReader(tc.in))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := map[int]bool{}
+			for _, it := range items {
+				got[it.Line] = it.TopLevel
+			}
+			for line, want := range tc.want {
+				g, ok := got[line]
+				if !ok {
+					t.Errorf("line %d: no item parsed; items %+v", line, items)
+					continue
+				}
+				if g != want {
+					t.Errorf("line %d: TopLevel = %v, want %v", line, g, want)
+				}
+			}
+		})
 	}
 }

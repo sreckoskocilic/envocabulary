@@ -268,7 +268,8 @@ Flags:
   --orphans       also include zsh backup/variant files (.zshrc.backup, ...); with --bash, bash variants too. Never annotated by --dedup
   --bash          also include .bashrc / .bash_profile / .profile
   -n              prefix each line with its source line number
-  --dedup         comment out lines overridden by a later writer,
+  --dedup         comment out lines overridden by a later writer in a file
+                  read by the same shells, outside any function or block,
                   annotated as: # [overridden by file:line] ...
 
 Examples:
@@ -686,8 +687,8 @@ func helpReport(w io.Writer) {
 Usage:
   envocabulary report [--html] [--bash]
 
-Sections: SAFE TO DELETE (duplicates with the same value as the winner),
-REVIEW (duplicates whose value differs, plus every duplicate function),
+Sections: SAFE TO DELETE (same value as the winner, both outside any function
+or block, in files read by the same shells), REVIEW (every other duplicate),
 DANGLING, ORPHANED FILES, UNREADABLE FILES. Backup/variant files are always
 scanned: they feed ORPHANED FILES and DANGLING but never SAFE TO DELETE or
 REVIEW. Definition values are printed as written in the file.

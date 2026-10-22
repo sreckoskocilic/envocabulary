@@ -339,7 +339,7 @@ func TestRunCatalog_LineNumbers(t *testing.T) {
 func TestRunCatalog_DedupAnnotation(t *testing.T) {
 	setupFakeShellHome(t, map[string]string{
 		".zprofile": "export FOO=first\n",
-		".zshrc":    "export FOO=second\n",
+		".zlogin":   "export FOO=second\n",
 	})
 	var stdout, stderr bytes.Buffer
 	code := runCatalog([]string{"--dedup"}, &stdout, &stderr)

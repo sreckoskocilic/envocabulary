@@ -146,13 +146,17 @@ func TestLoserSet(t *testing.T) {
 	groups := []Group{
 		{
 			Kind: inventory.KindExport, Name: "X",
-			Winner: Occurrence{File: "/b", Line: 5},
-			Losers: []Occurrence{{File: "/a", Line: 10}, {File: "/a", Line: 20}},
+			Winner: Occurrence{File: "/a", Line: 30, TopLevel: true},
+			Losers: []Occurrence{
+				{File: "/a", Line: 10, TopLevel: true},
+				{File: "/a", Line: 20, TopLevel: true},
+				{File: "/a", Line: 25},
+			},
 		},
 	}
 	set := LoserSet(groups)
 	if len(set) != 2 {
-		t.Errorf("expected 2 loser entries, got %d", len(set))
+		t.Errorf("expected 2 loser entries, nested line 25 excluded; got %d", len(set))
 	}
 	if _, ok := set[Key("/a", 10)]; !ok {
 		t.Errorf("expected /a:10 in loser set")
@@ -191,5 +195,30 @@ func TestFindGroupsExportWithAssign(t *testing.T) {
 	}
 	if groups[0].Winner.Line != 4 || groups[0].Winner.Kind != inventory.KindAssign {
 		t.Errorf("winner got %+v, want .zshrc:4 assign", groups[0].Winner)
+	}
+}
+
+func TestOverrides(t *testing.T) {
+	top := func(file string) Occurrence { return Occurrence{File: file, TopLevel: true} }
+	tests := []struct {
+		name          string
+		winner, loser Occurrence
+		want          bool
+	}{
+		{"same file, both top level", top("/z/.zshrc"), top("/z/.zshrc"), true},
+		{"zprofile and zlogin run in the same shells", top("/z/.zlogin"), top("/z/.zprofile"), true},
+		{"zshenv also runs in scripts", top("/z/.zshrc"), top("/z/.zshenv"), false},
+		{"zprofile runs in non-interactive login shells", top("/z/.zshrc"), top("/z/.zprofile"), false},
+		{"bash_profile is not read by non-login shells", top("/z/.bashrc"), top("/z/.bash_profile"), false},
+		{"profile is read by sh", top("/z/.bash_profile"), top("/z/.profile"), false},
+		{"loser inside a block", top("/z/.zshrc"), Occurrence{File: "/z/.zshrc"}, false},
+		{"winner inside a block", Occurrence{File: "/z/.zshrc"}, top("/z/.zshrc"), false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Overrides(tc.winner, tc.loser); got != tc.want {
+				t.Errorf("Overrides = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

@@ -22,10 +22,11 @@ const (
 )
 
 type Item struct {
-	Kind  Kind
-	Name  string
-	Line  int
-	Value string
+	Kind     Kind
+	Name     string
+	Line     int
+	Value    string
+	TopLevel bool
 }
 
 type Role string
@@ -282,23 +283,36 @@ func IsShellOrphan(path string, includeBash bool) bool {
 
 func ParseReader(r io.Reader) ([]Item, error) {
 	var items []Item
+	var n nesting
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
 	lineNo := 0
 	for sc.Scan() {
 		lineNo++
 		line := sc.Text()
+		top := n.topLevel(line)
 		if lineNo == 1 && strings.HasPrefix(line, "\ufeff") {
 			continue
 		}
 		if it, ok := parseLine(line, lineNo); ok {
+			it.TopLevel = top
 			items = append(items, it)
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return items, fmt.Errorf("line %d: %w", lineNo+1, err)
+		return clearTopLevel(items), fmt.Errorf("line %d: %w", lineNo+1, err)
+	}
+	if !n.balanced() {
+		return clearTopLevel(items), nil
 	}
 	return items, nil
+}
+
+func clearTopLevel(items []Item) []Item {
+	for i := range items {
+		items[i].TopLevel = false
+	}
+	return items
 }
 
 func parseLine(line string, lineNo int) (Item, bool) {

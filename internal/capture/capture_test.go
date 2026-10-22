@@ -72,7 +72,7 @@ func TestParseTrace(t *testing.T) {
 		{
 			"local with flag",
 			"+/u/foo/.zshrc:11> > local -r FOO=bar\n",
-			[]model.TraceEntry{{File: "/u/foo/.zshrc", Line: 11, Name: "FOO", Raw: "local -r FOO=bar"}},
+			nil,
 		},
 		{
 			"all writers preserved in order",
@@ -275,5 +275,51 @@ func TestBoundedWriter_Overflow(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "100 MB") {
 		t.Errorf("expected trace-too-large error; got %v", err)
+	}
+}
+
+func TestParseTrace_SkipsAssignmentsThatDoNotSetTheEnv(t *testing.T) {
+	trace := strings.Join([]string{
+		"+/u/.zshrc:1> /u/.zshrc> export A=real",
+		"+/u/.zshrc:2> /u/.zshrc> A=temp +/u/.zshrc:2> /u/.zshrc> true",
+		"+/u/.zshrc:3> /u/.zshrc> A=temp ls /dev/null",
+		"+/u/.zshrc:4> /u/.zshrc> A=1 B='x y' command true",
+		"+/u/.zshrc:5> f> local A=inner",
+		"+/u/.zshrc:5> f> typeset A=inner",
+		"+/u/.zshrc:5> f> declare -x A=inner",
+		"+/u/.zshrc:5> (anon)> typeset A=inner",
+		"+/u/.zshrc:6> /u/.zshrc> L=+/u/.zshrc:6> /u/.zshrc> echo x",
+		"",
+	}, "\n")
+	got := parseTrace(trace)
+	if len(got) != 1 || got[0].Line != 1 {
+		t.Errorf("only the export on line 1 sets A; got %+v", got)
+	}
+}
+
+func TestParseTrace_KeepsRealAssignments(t *testing.T) {
+	trace := strings.Join([]string{
+		"+/u/.zshrc:1> /u/.zshrc> A=1 ",
+		"+/u/.zshrc:2> /u/.zshrc> B=y C=z ",
+		"+/u/.zshrc:3> /u/.zshrc> D=( a b 'c d' ) ",
+		"+/u/.zshrc:4> /u/.zshrc> E='x +y:1> z' ",
+		"+/u/.zshrc:5> /u/.zshrc> F=$'a\\' b' ",
+		"+/u/.zshrc:6> /u/.zshrc> typeset G=1",
+		"+/u/.zshrc:7> f> typeset -gx H=1",
+		"+/u/.zshrc:7> f> I=1 ",
+		"+/u/.zshrc:7> f> export J=1",
+		"+/u/.zshrc:8> (eval)> typeset K=1",
+		"+/u/.bashrc:9> > declare L=1",
+		"+/u/.bashrc:10> source> declare M=1",
+		"",
+	}, "\n")
+	got := parseTrace(trace)
+	names := make([]string, 0, len(got))
+	for _, e := range got {
+		names = append(names, e.Name)
+	}
+	want := []string{"A", "B", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"}
+	if !reflect.DeepEqual(names, want) {
+		t.Errorf("got %v\nwant %v", names, want)
 	}
 }

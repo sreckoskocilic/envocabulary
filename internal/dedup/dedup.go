@@ -11,11 +11,12 @@ import (
 )
 
 type Occurrence struct {
-	File  string
-	Kind  inventory.Kind
-	Name  string
-	Line  int
-	Value string
+	File     string
+	Kind     inventory.Kind
+	Name     string
+	Line     int
+	Value    string
+	TopLevel bool
 }
 
 type Group struct {
@@ -52,7 +53,7 @@ func Find(files []inventory.File) []Group {
 				continue
 			}
 			entries = append(entries, entry{
-				occ:   Occurrence{File: f.Path, Kind: it.Kind, Name: it.Name, Line: it.Line, Value: it.Value},
+				occ:   Occurrence{File: f.Path, Kind: it.Kind, Name: it.Name, Line: it.Line, Value: it.Value, TopLevel: it.TopLevel},
 				rank:  rank,
 				shell: f.Role,
 			})
@@ -94,12 +95,26 @@ func Find(files []inventory.File) []Group {
 	return groups
 }
 
+func Overrides(winner, loser Occurrence) bool {
+	return winner.TopLevel && loser.TopLevel && shellScope(winner.File) == shellScope(loser.File)
+}
+
+func shellScope(path string) string {
+	base := filepath.Base(path)
+	if base == ".zprofile" || base == ".zlogin" {
+		return "zsh-login"
+	}
+	return path
+}
+
 func LoserSet(groups []Group) map[string]Occurrence {
 	out := map[string]Occurrence{}
 	for i := range groups {
 		g := groups[i]
 		for _, l := range g.Losers {
-			out[Key(l.File, l.Line)] = g.Winner
+			if Overrides(g.Winner, l) {
+				out[Key(l.File, l.Line)] = g.Winner
+			}
 		}
 	}
 	return out

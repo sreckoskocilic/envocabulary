@@ -13,14 +13,14 @@ import (
 func testFiles() []inventory.File {
 	return []inventory.File{
 		{Path: "/home/u/.zprofile", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{
-			{Kind: inventory.KindExport, Name: "EDITOR", Line: 3, Value: "nvim"},
-			{Kind: inventory.KindExport, Name: "GOPATH", Line: 5, Value: "$HOME/go"},
-			{Kind: inventory.KindExport, Name: "JAVA_HOME", Line: 8, Value: "/usr/local/java11"},
+			{Kind: inventory.KindExport, Name: "EDITOR", Line: 3, Value: "nvim", TopLevel: true},
+			{Kind: inventory.KindExport, Name: "GOPATH", Line: 5, Value: "$HOME/go", TopLevel: true},
+			{Kind: inventory.KindExport, Name: "JAVA_HOME", Line: 8, Value: "/usr/local/java11", TopLevel: true},
 		}},
-		{Path: "/home/u/.zshrc", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{
-			{Kind: inventory.KindExport, Name: "EDITOR", Line: 2, Value: "nvim"},
-			{Kind: inventory.KindExport, Name: "JAVA_HOME", Line: 10, Value: "/opt/openjdk"},
-			{Kind: inventory.KindAlias, Name: "ll", Line: 15, Value: "ls -lA"},
+		{Path: "/home/u/.zlogin", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{
+			{Kind: inventory.KindExport, Name: "EDITOR", Line: 2, Value: "nvim", TopLevel: true},
+			{Kind: inventory.KindExport, Name: "JAVA_HOME", Line: 10, Value: "/opt/openjdk", TopLevel: true},
+			{Kind: inventory.KindAlias, Name: "ll", Line: 15, Value: "ls -lA", TopLevel: true},
 		}},
 		{Path: "/home/u/.zshrc.old", Role: inventory.RoleOrphan, Items: []inventory.Item{
 			{Kind: inventory.KindExport, Name: "OLD_VAR", Line: 1, Value: "stale"},
@@ -171,10 +171,10 @@ func TestBuildDanglingSourceDefinition(t *testing.T) {
 func TestBuildDanglingExportNoValue(t *testing.T) {
 	files := []inventory.File{
 		{Path: "/home/u/.zprofile", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{
-			{Kind: inventory.KindExport, Name: "EMPTY", Line: 1},
+			{Kind: inventory.KindExport, Name: "EMPTY", Line: 1, TopLevel: true},
 		}},
-		{Path: "/home/u/.zshrc", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{
-			{Kind: inventory.KindExport, Name: "EMPTY", Line: 2},
+		{Path: "/home/u/.zlogin", Role: inventory.RoleCanonicalZsh, Items: []inventory.Item{
+			{Kind: inventory.KindExport, Name: "EMPTY", Line: 2, TopLevel: true},
 		}},
 	}
 	r := Build(files)
@@ -282,31 +282,71 @@ func TestBuild_ReportsUnreadableFiles(t *testing.T) {
 	}
 }
 
-func TestBuild_ArraysParsedFromRealLines(t *testing.T) {
-	parse := func(path, src string) inventory.File {
-		items, err := inventory.ParseReader(strings.NewReader(src))
+func parseFiles(t *testing.T, srcs ...string) []inventory.File {
+	t.Helper()
+	files := make([]inventory.File, 0, len(srcs)/2)
+	for i := 0; i < len(srcs); i += 2 {
+		items, err := inventory.ParseReader(strings.NewReader(srcs[i+1]))
 		if err != nil {
 			t.Fatal(err)
 		}
-		return inventory.File{Path: path, Role: inventory.RoleCanonicalZsh, Items: items}
+		files = append(files, inventory.File{Path: srcs[i], Role: inventory.RoleCanonicalZsh, Items: items})
 	}
-	files := []inventory.File{
-		parse("/home/u/.zprofile", "plugins=(git docker)\nMULTI=(\nSAME=(a b)\n"),
-		parse("/home/u/.zshrc", "plugins=(git kubectl)\nMULTI=(\nSAME=( a  b )\n"),
+	return files
+}
+
+func definitions(entries []Entry) []string {
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.Definition+" @ "+e.Location)
 	}
-	r := Build(files)
-	safe := make([]string, 0, len(r.Safe))
-	review := make([]string, 0, len(r.Review))
-	for _, e := range r.Safe {
-		safe = append(safe, e.Definition)
-	}
-	for _, e := range r.Review {
-		review = append(review, e.Definition)
-	}
-	if len(safe) != 1 || !strings.Contains(safe[0], "SAME") {
+	return out
+}
+
+func TestBuild_ArraysParsedFromRealLines(t *testing.T) {
+	r := Build(parseFiles(t,
+		"/home/u/.zprofile", "plugins=(git docker)\nMULTI=(\na\n)\nSAME=(a b)\n",
+		"/home/u/.zlogin", "plugins=(git kubectl)\nMULTI=(\nb\n)\nSAME=( a  b )\n",
+	))
+	if safe := definitions(r.Safe); len(safe) != 1 || !strings.Contains(safe[0], "SAME") {
 		t.Errorf("only SAME is identical; safe=%v", safe)
 	}
-	if len(review) != 2 {
+	if review := definitions(r.Review); len(review) != 2 {
 		t.Errorf("plugins differ and MULTI is unparseable on one line; review=%v", review)
+	}
+}
+
+func TestBuild_SafeOnlyWhenDeletionCannotChangeBehaviour(t *testing.T) {
+	r := Build(parseFiles(t,
+		"/home/u/.zshenv", "export EDITOR=vim\n",
+		"/home/u/.zshrc", strings.Join([]string{
+			"export EDITOR=vim",
+			"mkcd() {",
+			`  dir="$1"`,
+			"}",
+			"gclone() {",
+			`  dir="$1"`,
+			"}",
+			"if [[ $OSTYPE == darwin* ]]; then",
+			"export BROWSER=open",
+			"else",
+			"export BROWSER=open",
+			"fi",
+			"export PAGER=less",
+			"export PAGER=less",
+		}, "\n"),
+	))
+	safe := definitions(r.Safe)
+	if len(safe) != 1 || safe[0] != "export PAGER=less @ /home/u/.zshrc:13" {
+		t.Errorf("only the repeated top-level PAGER in one file is safe; safe=%v", safe)
+	}
+	want := []string{
+		"assign dir=$1 @ /home/u/.zshrc:3",
+		"export BROWSER=open @ /home/u/.zshrc:9",
+		"export EDITOR=vim @ /home/u/.zshenv:1",
+	}
+	review := definitions(r.Review)
+	if strings.Join(review, "\n") != strings.Join(want, "\n") {
+		t.Errorf("review got %v\nwant %v", review, want)
 	}
 }
